@@ -1,0 +1,79 @@
+# sift configuration — reference example
+#
+# This file is the default config sift loads when invoked from this
+# directory. It's tuned for the included ATOProfile reference (ATO crawl
+# targeting www.ato.gov.au). For a different site, set [site].profile +
+# [seed].host_allow accordingly, or pass --config /path/to/other.toml.
+#
+# Override individual values via CLI flags (e.g. --rate 5).
+# Use sift.local.toml for per-machine overrides (gitignored).
+
+# ---- Site profile — picks per-site URL classification + facts schemas -------
+[site]
+profile = "sift.sites.ato:ATOProfile"
+# Alternatives shipped with the package:
+#   "sift.sites.generic:GenericProfile"          — safe defaults, HTTP only
+#   "sift.sites.generic_browser:GenericBrowserProfile" — every URL via browser
+#   "sift.sites.augov:AUGovProfile"              — AU government base profile
+#   "sift.sites.augov:SAGovProfile"              — SA-specific extensions
+#   "sift.sites.stripe:StripeDocsProfile"        — Stripe API docs
+#   "sift.sites.mdn:MDNProfile"                  — MDN web reference
+#   "sift.sites.python_docs:PythonDocsProfile"   — Python language docs
+
+# ---- Financial year ---------------------------------------------------------
+# Bump once per FY (July 1). URLs with year < this are treated as FROZEN.
+[fy]
+current_start_year = 2025
+
+# ---- Crawl politeness + parallelism ----------------------------------------
+[crawl]
+rate_per_sec   = 5.0    # per-host token bucket
+concurrency    = 8      # in-flight HTTP requests cap (still rate-limited)
+timeout_sec    = 30.0
+retries        = 3      # per-URL transient-error retries within one run
+
+# Leave unset to use the built-in User-Agent that identifies the crawler
+# and points at a contact email. Override for a different operator.
+# user_agent = "my-crawler/1.0 (+contact)"
+
+# ---- Publish-gate thresholds -----------------------------------------------
+[publish]
+coverage_floor      = 0.99    # fraction of seeded URLs that must reach a terminal state
+hash_sample_rate    = 0.01    # 1% of md files re-hashed each publish
+hash_sample_min     = 25      # but never fewer than this
+schema_sample_size  = 50      # files checked for structural sanity
+
+# ---- Seed-time URL filtering -----------------------------------------------
+[seed]
+host_allow            = ["www.ato.gov.au"]
+use_default_excludes  = true   # see classify.DEFAULT_EXCLUDE_PATTERNS
+extra_exclude_patterns = [
+    "^/other-languages/",   # translations of main pages - deferred
+    "^/media-centre/",      # news items - deferred (high churn, low per-page value)
+]
+
+# ---- Per-tier refresh and tombstone behavior -------------------------------
+# Each tier inherits unspecified fields from the built-in defaults.
+[tiers.NEWS]
+floor_days          = 1
+ceiling_days        = 7
+tombstone_ttl_days  = 30
+max_failures        = 10
+
+[tiers.LIVING]
+floor_days          = 7
+ceiling_days        = 90
+tombstone_ttl_days  = 90
+max_failures        = 20
+
+[tiers.CURRENT_FORMS]
+floor_days          = 14
+ceiling_days        = 180
+tombstone_ttl_days  = 180
+max_failures        = 20
+
+[tiers.FROZEN]
+floor_days          = 365
+ceiling_days        = 730
+tombstone_ttl_days  = 730
+max_failures        = 5

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/dvlshah/sift#readme
+    about: Quickstart, architecture, CLI reference, and v1 MVP status.
+  - name: Integrity verification
+    url: https://github.com/dvlshah/sift#integrity-guarantees
+    about: How to verify a published snapshot's Merkle root + chained changelog.

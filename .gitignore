@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Local env / secrets
+.env
+.env.local
+.envrc
+
+# Runtime artifacts — index roots are operator state, never committed
+index/
+test-index/
+test-sift/
+.crawl-cache/
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Local config overrides (gitignored by convention)
+sift.local.toml
+
+# Claude Code project-local MCP config (contains absolute paths)
+.mcp.json
+.claude/*
+# ...but track the shared sift onboarding skill (portable, no machine paths)
+!.claude/skills/
+
+# Discovery / seed dumps — input data, not source
+*.firecrawl.json
+www.*.json
+
+# Local-only working files (never part of the public repo)
+/.private/
+
+# Local sift indexes (ad-hoc builds outside index/test-index)
+sift-*/
+
+# Agent-bench run outputs (per-run + large; final reports promoted into
+# evals/agent_loop/results/ explicitly)
+agent-bench-*/
+
+# coverage artifacts
+.coverage
+htmlcov/

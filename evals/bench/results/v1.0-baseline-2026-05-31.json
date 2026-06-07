@@ -1,0 +1,4218 @@
+{
+  "config": {
+    "limit": 500,
+    "sample_per_fixture": 15,
+    "firecrawl_fallback": true,
+    "firecrawl_budget_per_site": 30,
+    "rebuild": false
+  },
+  "total_wall_seconds": 4597.37,
+  "fixtures_attempted": 24,
+  "results": [
+    {
+      "use_case": "coding-agents",
+      "slug": "python-docs",
+      "host": "docs.python.org",
+      "discovery": "firecrawl",
+      "status": "published",
+      "seeded": 598,
+      "fetched": 491,
+      "md_count": 491,
+      "md_mean_bytes": 41655,
+      "firecrawl_credits": 0,
+      "wall_seconds": 278.1,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "coding-agents",
+          "slug": "python-docs",
+          "host": "docs.python.org",
+          "discovery": "firecrawl"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "coding-agents",
+              "slug": "python-docs",
+              "host": "docs.python.org"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 498,
+              "fetchable": 500,
+              "rate": 0.996,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "coding-agents",
+              "slug": "python-docs",
+              "host": "docs.python.org"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.586,
+              "per_type": {
+                "heading": 0.409,
+                "table": 0.867,
+                "list": 0.601,
+                "code_block": 0.703,
+                "link": 0.352
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.python.org/3.10/library/os.path.html",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 0.0,
+                    "link": 0.3227848101265823
+                  }
+                },
+                {
+                  "url": "https://docs.python.org/3/library/python.html",
+                  "ratios": {
+                    "heading": 0.1111111111111111,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.006711409395973154
+                  }
+                },
+                {
+                  "url": "https://docs.python.org/3.10/library/weakref.html",
+                  "ratios": {
+                    "heading": 0.4666666666666667,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 0.8125,
+                    "link": 0.5038167938931297
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 13,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://docs.python.org/3/library/python.html",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.python.org/3.10/library/weakref.html",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.python.org/3.10/library/constants.html",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.494,
+              "per_pattern_mean": {
+                "\\bclass \\w+\\b": 0.823
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.python.org/3.10/library/os.path.html",
+                  "score": 0.0,
+                  "patterns": {
+                    "```": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^def \\w+\\(": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bclass \\w+\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.python.org/3/library/python.html",
+                  "score": 0.0,
+                  "patterns": {
+                    "```": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^def \\w+\\(": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bclass \\w+\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.python.org/3.10/library/weakref.html",
+                  "score": 1.0,
+                  "patterns": {
+                    "```": {
+                      "html": 0,
+                      "md": 26
+                    },
+                    "^def \\w+\\(": {
+                      "html": 0,
+                      "md": 12
+                    },
+                    "\\bclass \\w+\\b": {
+                      "html": 6,
+                      "md": 15
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "coding-agents",
+      "slug": "mdn",
+      "host": "developer.mozilla.org",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 65870,
+      "fetched": 498,
+      "md_count": 498,
+      "md_mean_bytes": 2706,
+      "firecrawl_credits": 0,
+      "wall_seconds": 169.46,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "coding-agents",
+          "slug": "mdn",
+          "host": "developer.mozilla.org",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "coding-agents",
+              "slug": "mdn",
+              "host": "developer.mozilla.org"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 499,
+              "fetchable": 500,
+              "rate": 0.998,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "coding-agents",
+              "slug": "mdn",
+              "host": "developer.mozilla.org"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.484,
+              "per_type": {
+                "heading": 0.384,
+                "table": 1.0,
+                "list": 0.016,
+                "code_block": 1.0,
+                "link": 0.019
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://developer.mozilla.org/de",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.005847953216374269
+                  }
+                },
+                {
+                  "url": "https://developer.mozilla.org/de/404",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.00819672131147541
+                  }
+                },
+                {
+                  "url": "https://developer.mozilla.org/de/advertising",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 0.13333333333333333,
+                    "code_block": 1.0,
+                    "link": 0.037037037037037035
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 14,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://developer.mozilla.org/de/404",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://developer.mozilla.org/de/advertising",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://developer.mozilla.org/de/community/spotlight/cw118",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.035,
+              "per_pattern_mean": {
+                "@\\w+": 0.035
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://developer.mozilla.org/de",
+                  "score": 0.0,
+                  "patterns": {
+                    "```": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "<\\w+>": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "@\\w+": {
+                      "html": 22,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://developer.mozilla.org/de/404",
+                  "score": 0.0,
+                  "patterns": {
+                    "```": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "<\\w+>": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "@\\w+": {
+                      "html": 22,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://developer.mozilla.org/de/advertising",
+                  "score": 0.0,
+                  "patterns": {
+                    "```": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "<\\w+>": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "@\\w+": {
+                      "html": 22,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "coding-agents",
+      "slug": "stripe-docs",
+      "host": "docs.stripe.com",
+      "discovery": "sitemap",
+      "status": "degraded",
+      "seeded": 3487,
+      "fetched": 471,
+      "md_count": 471,
+      "md_mean_bytes": 4215,
+      "firecrawl_credits": 0,
+      "wall_seconds": 186.52,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "coding-agents",
+          "slug": "stripe-docs",
+          "host": "docs.stripe.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "coding-agents",
+              "slug": "stripe-docs",
+              "host": "docs.stripe.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 498,
+              "fetchable": 500,
+              "rate": 0.996,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "coding-agents",
+              "slug": "stripe-docs",
+              "host": "docs.stripe.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.456,
+              "per_type": {
+                "heading": 0.509,
+                "table": 0.867,
+                "list": 0.404,
+                "code_block": 0.4,
+                "link": 0.099
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.stripe.com/acceptable-verification-documents",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.11320754716981132
+                  }
+                },
+                {
+                  "url": "https://docs.stripe.com/account/approvals",
+                  "ratios": {
+                    "heading": 0.75,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 0.0,
+                    "link": 0.08771929824561403
+                  }
+                },
+                {
+                  "url": "https://docs.stripe.com/ach-deprecated",
+                  "ratios": {
+                    "heading": 0.9411764705882353,
+                    "table": 1.0,
+                    "list": 0.9,
+                    "code_block": 0.0,
+                    "link": 0.5333333333333333
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 13,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://docs.stripe.com/acceptable-verification-documents",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.stripe.com/account/approvals",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.stripe.com/ach-deprecated",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.056,
+              "per_pattern_mean": {
+                "\\bcurl\\s+": 0.121
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.stripe.com/acceptable-verification-documents",
+                  "score": 0.0,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bPOST /v1/\\w+": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bcurl\\s+": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.stripe.com/account/approvals",
+                  "score": 0.5,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bPOST /v1/\\w+": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bcurl\\s+": {
+                      "html": 2,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.stripe.com/ach-deprecated",
+                  "score": 0.235,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bPOST /v1/\\w+": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bcurl\\s+": {
+                      "html": 17,
+                      "md": 4
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "coding-agents",
+      "slug": "anthropic-docs",
+      "host": "docs.anthropic.com",
+      "discovery": "firecrawl",
+      "status": "failed",
+      "seeded": 0,
+      "fetched": 0,
+      "md_count": 0,
+      "md_mean_bytes": 0,
+      "firecrawl_credits": 0,
+      "wall_seconds": 3.41,
+      "notes": [],
+      "error": "seed (rc=0, seeded=0): warn: all 760 discovered URL(s) were filtered out (host_filter=760, exclude_filter=0). Check [seed] host_allow (['docs.anthropic.com']) and exclude patterns.\n",
+      "bench": null
+    },
+    {
+      "use_case": "tax-compliance",
+      "slug": "ato",
+      "host": "www.ato.gov.au",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 25618,
+      "fetched": 500,
+      "md_count": 500,
+      "md_mean_bytes": 5455,
+      "firecrawl_credits": 0,
+      "wall_seconds": 140.43,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "tax-compliance",
+          "slug": "ato",
+          "host": "www.ato.gov.au",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "ato",
+              "host": "www.ato.gov.au"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 500,
+              "fetchable": 500,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "ato",
+              "host": "www.ato.gov.au"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.485,
+              "per_type": {
+                "heading": 0.126,
+                "table": 1.0,
+                "list": 0.159,
+                "code_block": 1.0,
+                "link": 0.138
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-tenders-and-procurement",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.4444444444444444,
+                    "code_block": 1.0,
+                    "link": 0.06818181818181818
+                  }
+                },
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-tenders-and-procurement/the-tendering-process",
+                  "ratios": {
+                    "heading": 0.17647058823529413,
+                    "table": 1.0,
+                    "list": 0.5454545454545454,
+                    "code_block": 1.0,
+                    "link": 0.16666666666666666
+                  }
+                },
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-advice-and-guidance/precedential-ato-view",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.13636363636363635
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 9,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-tenders-and-procurement/the-tendering-process",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-advice-and-guidance/tailored-technical-assistance",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-advice-and-guidance/ato-guidance-products/oral-and-other-guidance-products",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.037,
+              "per_pattern_mean": {
+                "\\b20\\d{2}[-\u2013]\\d{2}\\b": 0.012,
+                "\\bGST\\b": 0.052,
+                "\\$[\\d,]+(?:\\.\\d{2})?": 0.2
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-tenders-and-procurement",
+                  "score": 0.005,
+                  "patterns": {
+                    "\\$[\\d,]+(?:\\.\\d{2})?": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\b20\\d{2}[-\u2013]\\d{2}\\b": {
+                      "html": 200,
+                      "md": 2
+                    },
+                    "\\bGST\\b": {
+                      "html": 1,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-tenders-and-procurement/the-tendering-process",
+                  "score": 0.131,
+                  "patterns": {
+                    "\\$[\\d,]+(?:\\.\\d{2})?": {
+                      "html": 10,
+                      "md": 2
+                    },
+                    "\\b20\\d{2}[-\u2013]\\d{2}\\b": {
+                      "html": 200,
+                      "md": 2
+                    },
+                    "\\bGST\\b": {
+                      "html": 11,
+                      "md": 2
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.ato.gov.au/about-ato/ato-advice-and-guidance/precedential-ato-view",
+                  "score": 0.005,
+                  "patterns": {
+                    "\\$[\\d,]+(?:\\.\\d{2})?": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\b20\\d{2}[-\u2013]\\d{2}\\b": {
+                      "html": 200,
+                      "md": 2
+                    },
+                    "\\bGST\\b": {
+                      "html": 1,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "tax-compliance",
+      "slug": "irs",
+      "host": "www.irs.gov",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 56829,
+      "fetched": 500,
+      "md_count": 500,
+      "md_mean_bytes": 9743,
+      "firecrawl_credits": 0,
+      "wall_seconds": 167.06,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "tax-compliance",
+          "slug": "irs",
+          "host": "www.irs.gov",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "irs",
+              "host": "www.irs.gov"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 500,
+              "fetchable": 500,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "irs",
+              "host": "www.irs.gov"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.432,
+              "per_type": {
+                "heading": 0.036,
+                "table": 1.0,
+                "list": 0.108,
+                "code_block": 1.0,
+                "link": 0.014
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.irs.gov/businesses/corporations/pre-filing-agreement-likely-suitable-issues-and-documentation",
+                  "ratios": {
+                    "heading": 0.034482758620689655,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.04081632653061224
+                  }
+                },
+                {
+                  "url": "https://www.irs.gov/acss-survey",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0044444444444444444
+                  }
+                },
+                {
+                  "url": "https://www.irs.gov/about-irs/new-simplified-method-for-determining-status-for-corporate-alternative-minimum-tax",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 5,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://www.irs.gov/businesses/corporations/pre-filing-agreement-likely-suitable-issues-and-documentation",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.irs.gov/businesses/international-businesses/foreign-corporation-form-1120-f-filing-responsibilities",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.irs.gov/about-irs/accessibility-notice-of-rights",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.232,
+              "per_pattern_mean": {
+                "\\bForm \\w+\\b": 0.077,
+                "\\bIRS\\b": 0.19,
+                "\\$[\\d,]+": 1.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.irs.gov/businesses/corporations/pre-filing-agreement-likely-suitable-issues-and-documentation",
+                  "score": 0.441,
+                  "patterns": {
+                    "\\$[\\d,]+": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bForm \\w+\\b": {
+                      "html": 28,
+                      "md": 5
+                    },
+                    "\\bIRS\\b": {
+                      "html": 27,
+                      "md": 19
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.irs.gov/acss-survey",
+                  "score": 0.118,
+                  "patterns": {
+                    "\\$[\\d,]+": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bForm \\w+\\b": {
+                      "html": 23,
+                      "md": 0
+                    },
+                    "\\bIRS\\b": {
+                      "html": 17,
+                      "md": 4
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.irs.gov/about-irs/new-simplified-method-for-determining-status-for-corporate-alternative-minimum-tax",
+                  "score": 0.393,
+                  "patterns": {
+                    "\\$[\\d,]+": {
+                      "html": 6,
+                      "md": 6
+                    },
+                    "\\bForm \\w+\\b": {
+                      "html": 25,
+                      "md": 2
+                    },
+                    "\\bIRS\\b": {
+                      "html": 10,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "tax-compliance",
+      "slug": "cra",
+      "host": "www.canada.ca",
+      "discovery": "firecrawl",
+      "status": "degraded",
+      "seeded": 1,
+      "fetched": 0,
+      "md_count": 0,
+      "md_mean_bytes": 0,
+      "firecrawl_credits": 0,
+      "wall_seconds": 163.64,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "tax-compliance",
+          "slug": "cra",
+          "host": "www.canada.ca",
+          "discovery": "firecrawl"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "cra",
+              "host": "www.canada.ca"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 0,
+              "fetchable": 1,
+              "rate": 0.0,
+              "passed": false
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "cra",
+              "host": "www.canada.ca"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 0,
+              "mean_ratio": 0.0,
+              "per_type": {},
+              "passed": false,
+              "samples": []
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 0,
+              "mean_anchor_ratio": 0.0,
+              "duplicate_anchor_pages": 0,
+              "passed": false,
+              "samples": []
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 0,
+              "mean_score": 0.0,
+              "per_pattern_mean": {},
+              "passed": false,
+              "samples": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "tax-compliance",
+      "slug": "oecd-tax",
+      "host": "www.oecd.org",
+      "discovery": "firecrawl",
+      "status": "published",
+      "seeded": 96,
+      "fetched": 96,
+      "md_count": 96,
+      "md_mean_bytes": 31678,
+      "firecrawl_credits": 1,
+      "wall_seconds": 67.8,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "tax-compliance",
+          "slug": "oecd-tax",
+          "host": "www.oecd.org",
+          "discovery": "firecrawl"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "oecd-tax",
+              "host": "www.oecd.org"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 96,
+              "fetchable": 96,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 1,
+              "note": "1 FRESH row(s) marked browser_version=firecrawl-*; these were escalated from native 401/403.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "tax-compliance",
+              "slug": "oecd-tax",
+              "host": "www.oecd.org"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.964,
+              "per_type": {
+                "heading": 0.952,
+                "table": 1.0,
+                "list": 0.933,
+                "code_block": 1.0,
+                "link": 0.933
+              },
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://www.oecd.org/tax",
+                  "ratios": {
+                    "heading": 0.2857142857142857,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                },
+                {
+                  "url": "https://www.oecd.org/tax/revenue-statistics-chile.pdf",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 1.0
+                  }
+                },
+                {
+                  "url": "https://www.oecd.org/tax/revenue-statistics-estonia.pdf",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 1.0
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://www.oecd.org/tax",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.oecd.org/tax/revenue-statistics-chile.pdf",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.oecd.org/tax/revenue-statistics-estonia.pdf",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.627,
+              "per_pattern_mean": {
+                "\\bOECD\\b": 0.861,
+                "\\bBEPS\\b": 0.333
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.oecd.org/tax",
+                  "score": 0.402,
+                  "patterns": {
+                    "\\bOECD\\b": {
+                      "html": 17,
+                      "md": 8
+                    },
+                    "\\bBEPS\\b": {
+                      "html": 6,
+                      "md": 2
+                    },
+                    "\\bDAC\\d+\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.oecd.org/tax/revenue-statistics-chile.pdf",
+                  "score": 1.0,
+                  "patterns": {
+                    "\\bOECD\\b": {
+                      "html": 2,
+                      "md": 18
+                    },
+                    "\\bBEPS\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bDAC\\d+\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.oecd.org/tax/revenue-statistics-estonia.pdf",
+                  "score": 1.0,
+                  "patterns": {
+                    "\\bOECD\\b": {
+                      "html": 2,
+                      "md": 18
+                    },
+                    "\\bBEPS\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bDAC\\d+\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "legal-standards",
+      "slug": "rfc-editor",
+      "host": "www.rfc-editor.org",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 21378,
+      "fetched": 498,
+      "md_count": 498,
+      "md_mean_bytes": 20066,
+      "firecrawl_credits": 0,
+      "wall_seconds": 143.15,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "legal-standards",
+          "slug": "rfc-editor",
+          "host": "www.rfc-editor.org",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "legal-standards",
+              "slug": "rfc-editor",
+              "host": "www.rfc-editor.org"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 498,
+              "fetchable": 500,
+              "rate": 0.996,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "legal-standards",
+              "slug": "rfc-editor",
+              "host": "www.rfc-editor.org"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.571,
+              "per_type": {
+                "heading": 0.178,
+                "table": 1.0,
+                "list": 0.654,
+                "code_block": 1.0,
+                "link": 0.023
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp3",
+                  "ratios": {
+                    "heading": 0.16666666666666666,
+                    "table": 1.0,
+                    "list": 0.4,
+                    "code_block": 1.0,
+                    "link": 0.1
+                  }
+                },
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp4",
+                  "ratios": {
+                    "heading": 0.16666666666666666,
+                    "table": 1.0,
+                    "list": 0.4,
+                    "code_block": 1.0,
+                    "link": 0.1
+                  }
+                },
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp5",
+                  "ratios": {
+                    "heading": 0.16666666666666666,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 14,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp3",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp4",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp5",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.127,
+              "per_pattern_mean": {
+                "\\bRFC\\s?\\d+\\b": 0.311,
+                "\\bSection \\d+(?:\\.\\d+)*\\b": 0.333
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp3",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\bRFC\\s?\\d+\\b": {
+                      "html": 0,
+                      "md": 1
+                    },
+                    "\\bSection \\d+(?:\\.\\d+)*\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\b(?:MUST|SHOULD|MAY|SHALL)\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp4",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\bRFC\\s?\\d+\\b": {
+                      "html": 0,
+                      "md": 1
+                    },
+                    "\\bSection \\d+(?:\\.\\d+)*\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\b(?:MUST|SHOULD|MAY|SHALL)\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.rfc-editor.org/info/bcp5",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\bRFC\\s?\\d+\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bSection \\d+(?:\\.\\d+)*\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\b(?:MUST|SHOULD|MAY|SHALL)\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "legal-standards",
+      "slug": "w3c",
+      "host": "www.w3.org",
+      "discovery": "firecrawl",
+      "status": "degraded",
+      "seeded": 480,
+      "fetched": 172,
+      "md_count": 172,
+      "md_mean_bytes": 25735,
+      "firecrawl_credits": 95,
+      "wall_seconds": 162.4,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "legal-standards",
+          "slug": "w3c",
+          "host": "www.w3.org",
+          "discovery": "firecrawl"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "legal-standards",
+              "slug": "w3c",
+              "host": "www.w3.org"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 166,
+              "fetchable": 472,
+              "rate": 0.3517,
+              "passed": false
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 62,
+              "note": "62 FRESH row(s) marked browser_version=firecrawl-*; these were escalated from native 401/403.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "legal-standards",
+              "slug": "w3c",
+              "host": "www.w3.org"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.435,
+              "per_type": {
+                "heading": 0.184,
+                "table": 0.933,
+                "list": 0.152,
+                "code_block": 0.767,
+                "link": 0.138
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.w3.org/TR/WCAG20-TECHS/H45.html",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 0.5,
+                    "link": 0.03225806451612903
+                  }
+                },
+                {
+                  "url": "https://www.w3.org/TR/epub-overview-34",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.29037800687285226
+                  }
+                },
+                {
+                  "url": "https://www.w3.org/TR/WCAG20-TECHS/G57.html",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.023255813953488372
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 6,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://www.w3.org/TR/css-display-3",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.w3.org/WAI/standards-guidelines/wcag-mobile-overlap",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.w3.org/WAI/ARIA/apg/patterns/tooltip",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.382,
+              "per_pattern_mean": {
+                "\\bnormative\\b|\\bnon-normative\\b": 0.787,
+                "\\bW3C\\b": 0.16
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.w3.org/TR/WCAG20-TECHS/H45.html",
+                  "score": 1.0,
+                  "patterns": {
+                    "\\bW3C\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\[\\[[A-Z][A-Z0-9-]+\\]\\]": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bnormative\\b|\\bnon-normative\\b": {
+                      "html": 1,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.w3.org/TR/epub-overview-34",
+                  "score": 0.092,
+                  "patterns": {
+                    "\\bW3C\\b": {
+                      "html": 71,
+                      "md": 13
+                    },
+                    "\\[\\[[A-Z][A-Z0-9-]+\\]\\]": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bnormative\\b|\\bnon-normative\\b": {
+                      "html": 1,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.w3.org/TR/WCAG20-TECHS/G57.html",
+                  "score": 0.5,
+                  "patterns": {
+                    "\\bW3C\\b": {
+                      "html": 2,
+                      "md": 0
+                    },
+                    "\\[\\[[A-Z][A-Z0-9-]+\\]\\]": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bnormative\\b|\\bnon-normative\\b": {
+                      "html": 1,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "legal-standards",
+      "slug": "cornell-lii",
+      "host": "www.law.cornell.edu",
+      "discovery": "firecrawl",
+      "status": "failed",
+      "seeded": 990,
+      "fetched": 0,
+      "md_count": 0,
+      "md_mean_bytes": 0,
+      "firecrawl_credits": 0,
+      "wall_seconds": 170.02,
+      "notes": [],
+      "error": "run (rc=1): ttps_/www.law.cornell.edu/regulations/california/title-9/division-4/chapter-5/subchapter-2/article-1_20https_/www.law.cornell.edu/regulations/california/title-9/division-4/chapter-5/subchapter-3/article-3_20https_/www.law.cornell.edu/regulations/california/title-9/division-4/chapter-4/subchapter-5'\n",
+      "bench": null
+    },
+    {
+      "use_case": "legal-standards",
+      "slug": "eur-lex",
+      "host": "eur-lex.europa.eu",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 20,
+      "fetched": 8,
+      "md_count": 8,
+      "md_mean_bytes": 3893,
+      "firecrawl_credits": 0,
+      "wall_seconds": 14.81,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "legal-standards",
+          "slug": "eur-lex",
+          "host": "eur-lex.europa.eu",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "legal-standards",
+              "slug": "eur-lex",
+              "host": "eur-lex.europa.eu"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 20,
+              "fetchable": 20,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "legal-standards",
+              "slug": "eur-lex",
+              "host": "eur-lex.europa.eu"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.387,
+              "per_type": {
+                "heading": 0.0,
+                "table": 0.933,
+                "list": 0.0,
+                "code_block": 1.0,
+                "link": 0.002
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://eur-lex.europa.eu/homepage.html",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                },
+                {
+                  "url": "https://eur-lex.europa.eu/oj/direct-access.html",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.024390243902439025
+                  }
+                },
+                {
+                  "url": "https://eur-lex.europa.eu/collection/eu-law/treaties/treaties-force.html",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 0.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 0,
+              "mean_anchor_ratio": 0.0,
+              "duplicate_anchor_pages": 0,
+              "passed": false,
+              "samples": []
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.0,
+              "per_pattern_mean": {
+                "\\b3\\d{4}[A-Z]\\d{4}\\b": 0.0,
+                "\\b(?:Directive|Regulation)\\s\\(?[A-Z]+\\)?\\s?20\\d{2}/\\d+\\b": 0.0,
+                "\\bArticle\\s\\d+(?:\\(\\d+\\))?\\b": 0.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://eur-lex.europa.eu/homepage.html",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\b3\\d{4}[A-Z]\\d{4}\\b": {
+                      "html": 1,
+                      "md": 0
+                    },
+                    "\\b(?:Directive|Regulation)\\s\\(?[A-Z]+\\)?\\s?20\\d{2}/\\d+\\b": {
+                      "html": 1,
+                      "md": 0
+                    },
+                    "\\bArticle\\s\\d+(?:\\(\\d+\\))?\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://eur-lex.europa.eu/oj/direct-access.html",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\b3\\d{4}[A-Z]\\d{4}\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\b(?:Directive|Regulation)\\s\\(?[A-Z]+\\)?\\s?20\\d{2}/\\d+\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bArticle\\s\\d+(?:\\(\\d+\\))?\\b": {
+                      "html": 1,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://eur-lex.europa.eu/collection/eu-law/treaties/treaties-force.html",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\b3\\d{4}[A-Z]\\d{4}\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\b(?:Directive|Regulation)\\s\\(?[A-Z]+\\)?\\s?20\\d{2}/\\d+\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bArticle\\s\\d+(?:\\(\\d+\\))?\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "support-policy",
+      "slug": "github-docs",
+      "host": "docs.github.com",
+      "discovery": "firecrawl",
+      "status": "published",
+      "seeded": 915,
+      "fetched": 500,
+      "md_count": 500,
+      "md_mean_bytes": 7415,
+      "firecrawl_credits": 0,
+      "wall_seconds": 267.76,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "support-policy",
+          "slug": "github-docs",
+          "host": "docs.github.com",
+          "discovery": "firecrawl"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "github-docs",
+              "host": "docs.github.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 500,
+              "fetchable": 500,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "github-docs",
+              "host": "docs.github.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.432,
+              "per_type": {
+                "heading": 0.029,
+                "table": 1.0,
+                "list": 0.151,
+                "code_block": 0.888,
+                "link": 0.093
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-organization-settings",
+                  "ratios": {
+                    "heading": 0.14285714285714285,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.2097560975609756
+                  }
+                },
+                {
+                  "url": "https://docs.github.com/en/enterprise-cloud@latest/copilot/reference/copilot-feature-matrix",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.04,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                },
+                {
+                  "url": "https://docs.github.com/en/code-security/reference/supply-chain-security/troubleshoot-dependabot/dependabot-updates-stopped",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.1744186046511628,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 3,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-organization-settings",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.github.com/en/enterprise-cloud@latest/contributing/collaborating-on-github-docs",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.github.com/en/enterprise-cloud@latest/rest/actions",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.702,
+              "per_pattern_mean": {
+                "\\bgithub\\.com\\b": 0.702
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-organization-settings",
+                  "score": 1.0,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^\\$ ": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bgithub\\.com\\b": {
+                      "html": 5,
+                      "md": 44
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.github.com/en/enterprise-cloud@latest/copilot/reference/copilot-feature-matrix",
+                  "score": 0.167,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^\\$ ": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bgithub\\.com\\b": {
+                      "html": 6,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.github.com/en/code-security/reference/supply-chain-security/troubleshoot-dependabot/dependabot-updates-stopped",
+                  "score": 0.167,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^\\$ ": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bgithub\\.com\\b": {
+                      "html": 6,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "support-policy",
+      "slug": "shopify-help",
+      "host": "help.shopify.com",
+      "discovery": "firecrawl",
+      "status": "published",
+      "seeded": 998,
+      "fetched": 157,
+      "md_count": 157,
+      "md_mean_bytes": 7413,
+      "firecrawl_credits": 157,
+      "wall_seconds": 211.37,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "support-policy",
+          "slug": "shopify-help",
+          "host": "help.shopify.com",
+          "discovery": "firecrawl"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "shopify-help",
+              "host": "help.shopify.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 157,
+              "fetchable": 500,
+              "rate": 0.314,
+              "passed": false
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 157,
+              "note": "157 FRESH row(s) marked browser_version=firecrawl-*; these were escalated from native 401/403.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "shopify-help",
+              "host": "help.shopify.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.739,
+              "per_type": {
+                "heading": 0.877,
+                "table": 1.0,
+                "list": 0.512,
+                "code_block": 1.0,
+                "link": 0.304
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://help.shopify.com/en/manual/online-store/themes/customizing-themes/theme-editor/features-overview",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 0.8571428571428571,
+                    "code_block": 1.0,
+                    "link": 0.5
+                  }
+                },
+                {
+                  "url": "https://help.shopify.com/en/manual/payments/shopify-payments/transactions/private-label-credit-cards",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.26666666666666666
+                  }
+                },
+                {
+                  "url": "https://help.shopify.com/en/manual/intro-to-shopify/initial-setup/sell-in-japan/japan-checkout-page",
+                  "ratios": {
+                    "heading": 1.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.46153846153846156
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://help.shopify.com/en/manual/online-store/themes/customizing-themes/theme-editor/features-overview",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://help.shopify.com/en/manual/payments/shopify-payments/transactions/private-label-credit-cards",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://help.shopify.com/en/manual/intro-to-shopify/initial-setup/sell-in-japan/japan-checkout-page",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.812,
+              "per_pattern_mean": {
+                "\\bShopify\\b": 0.791,
+                "\\b(?:USD|EUR|CAD|GBP)\\b": 1.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://help.shopify.com/en/manual/online-store/themes/customizing-themes/theme-editor/features-overview",
+                  "score": 0.667,
+                  "patterns": {
+                    "\\bShopify\\b": {
+                      "html": 3,
+                      "md": 2
+                    },
+                    "\\b(?:USD|EUR|CAD|GBP)\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://help.shopify.com/en/manual/payments/shopify-payments/transactions/private-label-credit-cards",
+                  "score": 0.905,
+                  "patterns": {
+                    "\\bShopify\\b": {
+                      "html": 21,
+                      "md": 19
+                    },
+                    "\\b(?:USD|EUR|CAD|GBP)\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://help.shopify.com/en/manual/intro-to-shopify/initial-setup/sell-in-japan/japan-checkout-page",
+                  "score": 0.8,
+                  "patterns": {
+                    "\\bShopify\\b": {
+                      "html": 10,
+                      "md": 8
+                    },
+                    "\\b(?:USD|EUR|CAD|GBP)\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "support-policy",
+      "slug": "atlassian-support",
+      "host": "support.atlassian.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 20375,
+      "fetched": 500,
+      "md_count": 500,
+      "md_mean_bytes": 3659,
+      "firecrawl_credits": 0,
+      "wall_seconds": 305.91,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "support-policy",
+          "slug": "atlassian-support",
+          "host": "support.atlassian.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "atlassian-support",
+              "host": "support.atlassian.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 500,
+              "fetchable": 500,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "atlassian-support",
+              "host": "support.atlassian.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.54,
+              "per_type": {
+                "heading": 0.627,
+                "table": 0.933,
+                "list": 0.011,
+                "code_block": 1.0,
+                "link": 0.129
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/accessing-advanced-roadmaps-plans-in-jira-data-centre-results-in-license-violation-error-message",
+                  "ratios": {
+                    "heading": 0.625,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.16666666666666666
+                  }
+                },
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/advanced-roadmap-plan-create-group-to-group-by-issue-for-custom-field-on-the-timeline",
+                  "ratios": {
+                    "heading": 0.5,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.05
+                  }
+                },
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/advanced-roadmaps-for-jira-is-disabled-and-the-plans-tab-is-missing",
+                  "ratios": {
+                    "heading": 0.7272727272727273,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.2
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/accessing-advanced-roadmaps-plans-in-jira-data-centre-results-in-license-violation-error-message",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/advanced-roadmap-plan-create-group-to-group-by-issue-for-custom-field-on-the-timeline",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/advanced-roadmaps-for-jira-is-disabled-and-the-plans-tab-is-missing",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.107,
+              "per_pattern_mean": {
+                "\\b(?:Jira|Confluence|Bitbucket)\\b": 0.116,
+                "\\b(?:admin|workspace|user)\\b": 0.083,
+                "\\bAtlassian\\b": 0.121
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/accessing-advanced-roadmaps-plans-in-jira-data-centre-results-in-license-violation-error-message",
+                  "score": 0.109,
+                  "patterns": {
+                    "\\b(?:Jira|Confluence|Bitbucket)\\b": {
+                      "html": 69,
+                      "md": 12
+                    },
+                    "\\b(?:admin|workspace|user)\\b": {
+                      "html": 1,
+                      "md": 0
+                    },
+                    "\\bAtlassian\\b": {
+                      "html": 26,
+                      "md": 4
+                    }
+                  }
+                },
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/advanced-roadmap-plan-create-group-to-group-by-issue-for-custom-field-on-the-timeline",
+                  "score": 0.12,
+                  "patterns": {
+                    "\\b(?:Jira|Confluence|Bitbucket)\\b": {
+                      "html": 43,
+                      "md": 3
+                    },
+                    "\\b(?:admin|workspace|user)\\b": {
+                      "html": 4,
+                      "md": 1
+                    },
+                    "\\bAtlassian\\b": {
+                      "html": 24,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://support.atlassian.com/advanced-roadmaps-for-jira/kb/advanced-roadmaps-for-jira-is-disabled-and-the-plans-tab-is-missing",
+                  "score": 0.15,
+                  "patterns": {
+                    "\\b(?:Jira|Confluence|Bitbucket)\\b": {
+                      "html": 223,
+                      "md": 62
+                    },
+                    "\\b(?:admin|workspace|user)\\b": {
+                      "html": 1,
+                      "md": 0
+                    },
+                    "\\bAtlassian\\b": {
+                      "html": 35,
+                      "md": 6
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "support-policy",
+      "slug": "notion-help",
+      "host": "www.notion.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 19849,
+      "fetched": 461,
+      "md_count": 461,
+      "md_mean_bytes": 4979,
+      "firecrawl_credits": 0,
+      "wall_seconds": 458.45,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "support-policy",
+          "slug": "notion-help",
+          "host": "www.notion.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "notion-help",
+              "host": "www.notion.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 461,
+              "fetchable": 495,
+              "rate": 0.9313,
+              "passed": false
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "support-policy",
+              "slug": "notion-help",
+              "host": "www.notion.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.5,
+              "per_type": {
+                "heading": 0.482,
+                "table": 1.0,
+                "list": 0.0,
+                "code_block": 1.0,
+                "link": 0.017
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/the-hidden-cost-of-ill-find-it-later-and-how-to-cut-it",
+                  "ratios": {
+                    "heading": 0.5,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.03125
+                  }
+                },
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/enterprise-search-security-the-complete-guide",
+                  "ratios": {
+                    "heading": 0.8775510204081632,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.13513513513513514
+                  }
+                },
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/enterprise-search-implementation-a-practical-guide-to-deployment-in-60-days",
+                  "ratios": {
+                    "heading": 0.8378378378378378,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.020833333333333332
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 14,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/the-hidden-cost-of-ill-find-it-later-and-how-to-cut-it",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/enterprise-search-security-the-complete-guide",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/enterprise-search-implementation-a-practical-guide-to-deployment-in-60-days",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.07,
+              "per_pattern_mean": {
+                "\\bNotion\\b": 0.071,
+                "\\b(?:database|page|workspace|block)\\b": 0.07
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/the-hidden-cost-of-ill-find-it-later-and-how-to-cut-it",
+                  "score": 0.019,
+                  "patterns": {
+                    "\\bNotion\\b": {
+                      "html": 87,
+                      "md": 0
+                    },
+                    "\\b(?:database|page|workspace|block)\\b": {
+                      "html": 27,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/enterprise-search-security-the-complete-guide",
+                  "score": 0.067,
+                  "patterns": {
+                    "\\bNotion\\b": {
+                      "html": 118,
+                      "md": 12
+                    },
+                    "\\b(?:database|page|workspace|block)\\b": {
+                      "html": 31,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://www.notion.com/ar/feature/enterprise-search/enterprise-search-implementation-a-practical-guide-to-deployment-in-60-days",
+                  "score": 0.037,
+                  "patterns": {
+                    "\\bNotion\\b": {
+                      "html": 107,
+                      "md": 8
+                    },
+                    "\\b(?:database|page|workspace|block)\\b": {
+                      "html": 26,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "change-monitor",
+      "slug": "kubernetes",
+      "host": "kubernetes.io",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 6413,
+      "fetched": 500,
+      "md_count": 500,
+      "md_mean_bytes": 9320,
+      "firecrawl_credits": 0,
+      "wall_seconds": 234.09,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "change-monitor",
+          "slug": "kubernetes",
+          "host": "kubernetes.io",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "kubernetes",
+              "host": "kubernetes.io"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 500,
+              "fetchable": 500,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "kubernetes",
+              "host": "kubernetes.io"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.477,
+              "per_type": {
+                "heading": 0.201,
+                "table": 1.0,
+                "list": 0.23,
+                "code_block": 0.942,
+                "link": 0.013
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/30/kubescape-validating-admission-policy-library",
+                  "ratios": {
+                    "heading": 0.8181818181818182,
+                    "table": 1.0,
+                    "list": 0.3,
+                    "code_block": 1.0,
+                    "link": 0.024360535931790498
+                  }
+                },
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/17/upcoming-changes-in-kubernetes-v1-27",
+                  "ratios": {
+                    "heading": 0.04,
+                    "table": 1.0,
+                    "list": 0.16666666666666666,
+                    "code_block": 1.0,
+                    "link": 0.01907032181168057
+                  }
+                },
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/10/image-registry-redirect",
+                  "ratios": {
+                    "heading": 0.07692307692307693,
+                    "table": 1.0,
+                    "list": 0.14285714285714285,
+                    "code_block": 1.0,
+                    "link": 0.027777777777777776
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/30/kubescape-validating-admission-policy-library",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/17/upcoming-changes-in-kubernetes-v1-27",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/10/image-registry-redirect",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.115,
+              "per_pattern_mean": {
+                "\\bkubectl\\b": 0.196,
+                "\\bv\\d+\\.\\d+(?:\\.\\d+)?\\b": 0.035
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/30/kubescape-validating-admission-policy-library",
+                  "score": 0.307,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 14
+                    },
+                    "\\bkubectl\\b": {
+                      "html": 12,
+                      "md": 7
+                    },
+                    "\\bv\\d+\\.\\d+(?:\\.\\d+)?\\b": {
+                      "html": 129,
+                      "md": 4
+                    }
+                  }
+                },
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/17/upcoming-changes-in-kubernetes-v1-27",
+                  "score": 0.118,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bkubectl\\b": {
+                      "html": 5,
+                      "md": 0
+                    },
+                    "\\bv\\d+\\.\\d+(?:\\.\\d+)?\\b": {
+                      "html": 170,
+                      "md": 40
+                    }
+                  }
+                },
+                {
+                  "url": "https://kubernetes.io/blog/2023/03/10/image-registry-redirect",
+                  "score": 0.337,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 12
+                    },
+                    "\\bkubectl\\b": {
+                      "html": 12,
+                      "md": 8
+                    },
+                    "\\bv\\d+\\.\\d+(?:\\.\\d+)?\\b": {
+                      "html": 126,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "change-monitor",
+      "slug": "docker-docs",
+      "host": "docs.docker.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 1665,
+      "fetched": 477,
+      "md_count": 477,
+      "md_mean_bytes": 8009,
+      "firecrawl_credits": 0,
+      "wall_seconds": 213.29,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "change-monitor",
+          "slug": "docker-docs",
+          "host": "docs.docker.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "docker-docs",
+              "host": "docs.docker.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 477,
+              "fetchable": 477,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "docker-docs",
+              "host": "docs.docker.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.426,
+              "per_type": {
+                "heading": 0.177,
+                "table": 1.0,
+                "list": 0.057,
+                "code_block": 0.888,
+                "link": 0.01
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.docker.com/ai-overview",
+                  "ratios": {
+                    "heading": 0.25,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.005361930294906166
+                  }
+                },
+                {
+                  "url": "https://docs.docker.com/dhi/get-started",
+                  "ratios": {
+                    "heading": 0.3333333333333333,
+                    "table": 1.0,
+                    "list": 0.027972027972027972,
+                    "code_block": 0.4,
+                    "link": 0.01703800786369594
+                  }
+                },
+                {
+                  "url": "https://docs.docker.com/dhi/features",
+                  "ratios": {
+                    "heading": 0.06666666666666667,
+                    "table": 1.0,
+                    "list": 0.24358974358974358,
+                    "code_block": 1.0,
+                    "link": 0.011494252873563218
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://docs.docker.com/ai-overview",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.docker.com/dhi/get-started",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://docs.docker.com/dhi/features",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.632,
+              "per_pattern_mean": {
+                "\\bdocker\\b": 0.607,
+                "\\bcompose\\b": 1.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://docs.docker.com/ai-overview",
+                  "score": 0.667,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bdocker\\b": {
+                      "html": 21,
+                      "md": 14
+                    },
+                    "\\bcompose\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.docker.com/dhi/get-started",
+                  "score": 1.0,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 4
+                    },
+                    "\\bdocker\\b": {
+                      "html": 21,
+                      "md": 22
+                    },
+                    "\\bcompose\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://docs.docker.com/dhi/features",
+                  "score": 0.857,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bdocker\\b": {
+                      "html": 14,
+                      "md": 12
+                    },
+                    "\\bcompose\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "change-monitor",
+      "slug": "vercel",
+      "host": "vercel.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 6845,
+      "fetched": 489,
+      "md_count": 489,
+      "md_mean_bytes": 4955,
+      "firecrawl_credits": 0,
+      "wall_seconds": 242.68,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "change-monitor",
+          "slug": "vercel",
+          "host": "vercel.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "vercel",
+              "host": "vercel.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 500,
+              "fetchable": 500,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "vercel",
+              "host": "vercel.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.507,
+              "per_type": {
+                "heading": 0.044,
+                "table": 0.933,
+                "list": 0.763,
+                "code_block": 0.76,
+                "link": 0.037
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://vercel.com/",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                },
+                {
+                  "url": "https://vercel.com/academy/slack-agents/error-handling-and-resilience",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 0.7272727272727273,
+                    "link": 0.18421052631578946
+                  }
+                },
+                {
+                  "url": "https://vercel.com/academy/ai-summary-app-with-nextjs/dynamic-routes-static-generation",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 0.9090909090909091,
+                    "link": 0.041666666666666664
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 5,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://vercel.com/ai-accelerator",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://vercel.com/ai-gateway/models",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://vercel.com/academy/production-monorepos/deploy-both-apps",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.171,
+              "per_pattern_mean": {
+                "\\bdeploy(?:ment|s)?\\b": 0.102,
+                "\\b20\\d{2}-\\d{2}-\\d{2}\\b": 0.0,
+                "\\bv?\\d+\\.\\d+\\.\\d+\\b": 1.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://vercel.com/",
+                  "score": 0.091,
+                  "patterns": {
+                    "\\b20\\d{2}-\\d{2}-\\d{2}\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bv?\\d+\\.\\d+\\.\\d+\\b": {
+                      "html": 0,
+                      "md": 2
+                    },
+                    "\\bdeploy(?:ment|s)?\\b": {
+                      "html": 11,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://vercel.com/academy/slack-agents/error-handling-and-resilience",
+                  "score": 0.222,
+                  "patterns": {
+                    "\\b20\\d{2}-\\d{2}-\\d{2}\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bv?\\d+\\.\\d+\\.\\d+\\b": {
+                      "html": 0,
+                      "md": 2
+                    },
+                    "\\bdeploy(?:ment|s)?\\b": {
+                      "html": 9,
+                      "md": 2
+                    }
+                  }
+                },
+                {
+                  "url": "https://vercel.com/academy/ai-summary-app-with-nextjs/dynamic-routes-static-generation",
+                  "score": 0.2,
+                  "patterns": {
+                    "\\b20\\d{2}-\\d{2}-\\d{2}\\b": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bv?\\d+\\.\\d+\\.\\d+\\b": {
+                      "html": 0,
+                      "md": 2
+                    },
+                    "\\bdeploy(?:ment|s)?\\b": {
+                      "html": 5,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "change-monitor",
+      "slug": "openai-changelog",
+      "host": "developers.openai.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 881,
+      "fetched": 390,
+      "md_count": 390,
+      "md_mean_bytes": 6929,
+      "firecrawl_credits": 0,
+      "wall_seconds": 214.19,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "change-monitor",
+          "slug": "openai-changelog",
+          "host": "developers.openai.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "openai-changelog",
+              "host": "developers.openai.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 500,
+              "fetchable": 500,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "change-monitor",
+              "slug": "openai-changelog",
+              "host": "developers.openai.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.384,
+              "per_type": {
+                "heading": 0.081,
+                "table": 0.933,
+                "list": 0.001,
+                "code_block": 0.903,
+                "link": 0.002
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://developers.openai.com/",
+                  "ratios": {
+                    "heading": 0.015384615384615385,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                },
+                {
+                  "url": "https://developers.openai.com/ads",
+                  "ratios": {
+                    "heading": 0.07692307692307693,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.00821917808219178
+                  }
+                },
+                {
+                  "url": "https://developers.openai.com/ads/api-overview",
+                  "ratios": {
+                    "heading": 0.1111111111111111,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 0.0,
+                    "link": 0.01092896174863388
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 14,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://developers.openai.com/",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://developers.openai.com/ads",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://developers.openai.com/ads/api-overview",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.333,
+              "per_pattern_mean": {
+                "\\bgpt-[\\w-]+\\b": 0.0,
+                "\\bv\\d+(?:\\.\\d+)*\\b": 1.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://developers.openai.com/",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\bgpt-[\\w-]+\\b": {
+                      "html": 5,
+                      "md": 0
+                    },
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bv\\d+(?:\\.\\d+)*\\b": {
+                      "html": 0,
+                      "md": 2
+                    }
+                  }
+                },
+                {
+                  "url": "https://developers.openai.com/ads",
+                  "score": 0.0,
+                  "patterns": {
+                    "\\bgpt-[\\w-]+\\b": {
+                      "html": 2,
+                      "md": 0
+                    },
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bv\\d+(?:\\.\\d+)*\\b": {
+                      "html": 0,
+                      "md": 2
+                    }
+                  }
+                },
+                {
+                  "url": "https://developers.openai.com/ads/api-overview",
+                  "score": 0.5,
+                  "patterns": {
+                    "\\bgpt-[\\w-]+\\b": {
+                      "html": 2,
+                      "md": 0
+                    },
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "\\bv\\d+(?:\\.\\d+)*\\b": {
+                      "html": 1,
+                      "md": 3
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "internal-kb",
+      "slug": "gitlab-hb",
+      "host": "handbook.gitlab.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 4513,
+      "fetched": 499,
+      "md_count": 499,
+      "md_mean_bytes": 8612,
+      "firecrawl_credits": 0,
+      "wall_seconds": 319.42,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "internal-kb",
+          "slug": "gitlab-hb",
+          "host": "handbook.gitlab.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "gitlab-hb",
+              "host": "handbook.gitlab.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 499,
+              "fetchable": 500,
+              "rate": 0.998,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "gitlab-hb",
+              "host": "handbook.gitlab.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.431,
+              "per_type": {
+                "heading": 0.087,
+                "table": 1.0,
+                "list": 0.066,
+                "code_block": 1.0,
+                "link": 0.004
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://handbook.gitlab.com/handbook/company",
+                  "ratios": {
+                    "heading": 0.03571428571428571,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                },
+                {
+                  "url": "https://handbook.gitlab.com/handbook/about",
+                  "ratios": {
+                    "heading": 0.047619047619047616,
+                    "table": 1.0,
+                    "list": 0.016233766233766232,
+                    "code_block": 1.0,
+                    "link": 0.0011160714285714285
+                  }
+                },
+                {
+                  "url": "https://handbook.gitlab.com/handbook/company/culture/exec-connect",
+                  "ratios": {
+                    "heading": 0.09090909090909091,
+                    "table": 1.0,
+                    "list": 0.008156606851549755,
+                    "code_block": 1.0,
+                    "link": 0.00028011204481792715
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://handbook.gitlab.com/handbook/company",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://handbook.gitlab.com/handbook/about",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://handbook.gitlab.com/handbook/company/culture/exec-connect",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.061,
+              "per_pattern_mean": {
+                "\\bGitLab\\b": 0.03,
+                "#\\s\\w+": 1.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://handbook.gitlab.com/handbook/company",
+                  "score": 0.037,
+                  "patterns": {
+                    "\\bGitLab\\b": {
+                      "html": 489,
+                      "md": 18
+                    },
+                    "#\\s\\w+": {
+                      "html": 0,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://handbook.gitlab.com/handbook/about",
+                  "score": 0.015,
+                  "patterns": {
+                    "\\bGitLab\\b": {
+                      "html": 471,
+                      "md": 7
+                    },
+                    "#\\s\\w+": {
+                      "html": 0,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://handbook.gitlab.com/handbook/company/culture/exec-connect",
+                  "score": 0.002,
+                  "patterns": {
+                    "\\bGitLab\\b": {
+                      "html": 460,
+                      "md": 1
+                    },
+                    "#\\s\\w+": {
+                      "html": 0,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "internal-kb",
+      "slug": "hashi-dev",
+      "host": "developer.hashicorp.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 8004,
+      "fetched": 454,
+      "md_count": 454,
+      "md_mean_bytes": 5505,
+      "firecrawl_credits": 0,
+      "wall_seconds": 156.75,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "internal-kb",
+          "slug": "hashi-dev",
+          "host": "developer.hashicorp.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "hashi-dev",
+              "host": "developer.hashicorp.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 454,
+              "fetchable": 454,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "hashi-dev",
+              "host": "developer.hashicorp.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.415,
+              "per_type": {
+                "heading": 0.03,
+                "table": 1.0,
+                "list": 0.0,
+                "code_block": 1.0,
+                "link": 0.045
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/configure-worker-storage",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.08130081300813008
+                  }
+                },
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/storage-providers/configure-minio",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0297029702970297
+                  }
+                },
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/storage-providers/configure-s3",
+                  "ratios": {
+                    "heading": 0.0,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.030927835051546393
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 2,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/enable-session-recording",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/create-storage-bucket",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.057,
+              "per_pattern_mean": {
+                "\\bHashiCorp\\b": 0.064,
+                "\\bv\\d+\\.\\d+\\.\\d+\\b": 0.05
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/configure-worker-storage",
+                  "score": 0.073,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 6
+                    },
+                    "\\bHashiCorp\\b": {
+                      "html": 17,
+                      "md": 1
+                    },
+                    "\\bv\\d+\\.\\d+\\.\\d+\\b": {
+                      "html": 23,
+                      "md": 2
+                    }
+                  }
+                },
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/storage-providers/configure-minio",
+                  "score": 0.076,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 4
+                    },
+                    "\\bHashiCorp\\b": {
+                      "html": 19,
+                      "md": 2
+                    },
+                    "\\bv\\d+\\.\\d+\\.\\d+\\b": {
+                      "html": 21,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://developer.hashicorp.com/boundary/docs/session-recording/configuration/storage-providers/configure-s3",
+                  "score": 0.053,
+                  "patterns": {
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 6
+                    },
+                    "\\bHashiCorp\\b": {
+                      "html": 17,
+                      "md": 1
+                    },
+                    "\\bv\\d+\\.\\d+\\.\\d+\\b": {
+                      "html": 21,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "internal-kb",
+      "slug": "gitlab-about",
+      "host": "about.gitlab.com",
+      "discovery": "sitemap",
+      "status": "published",
+      "seeded": 5893,
+      "fetched": 499,
+      "md_count": 499,
+      "md_mean_bytes": 7107,
+      "firecrawl_credits": 0,
+      "wall_seconds": 147.32,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "internal-kb",
+          "slug": "gitlab-about",
+          "host": "about.gitlab.com",
+          "discovery": "sitemap"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "gitlab-about",
+              "host": "about.gitlab.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 499,
+              "fetchable": 500,
+              "rate": 0.998,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "gitlab-about",
+              "host": "about.gitlab.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.42,
+              "per_type": {
+                "heading": 0.019,
+                "table": 1.0,
+                "list": 0.029,
+                "code_block": 1.0,
+                "link": 0.05
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://about.gitlab.com/",
+                  "ratios": {
+                    "heading": 0.2,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.10695187165775401
+                  }
+                },
+                {
+                  "url": "https://about.gitlab.com/ai-transparency-center",
+                  "ratios": {
+                    "heading": 0.07142857142857142,
+                    "table": 1.0,
+                    "list": 0.43478260869565216,
+                    "code_block": 1.0,
+                    "link": 0.07344632768361582
+                  }
+                },
+                {
+                  "url": "https://about.gitlab.com/blog",
+                  "ratios": {
+                    "heading": 0.015625,
+                    "table": 1.0,
+                    "list": 0.0,
+                    "code_block": 1.0,
+                    "link": 0.0
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 3,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://about.gitlab.com/",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://about.gitlab.com/ai-transparency-center",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://about.gitlab.com/blog",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.205,
+              "per_pattern_mean": {
+                "\\bGitLab\\b": 0.205
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://about.gitlab.com/",
+                  "score": 0.121,
+                  "patterns": {
+                    "\\bGitLab\\b": {
+                      "html": 33,
+                      "md": 4
+                    },
+                    "^#{1,3}\\s": {
+                      "html": 0,
+                      "md": 7
+                    },
+                    "\\bDRI\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://about.gitlab.com/ai-transparency-center",
+                  "score": 0.322,
+                  "patterns": {
+                    "\\bGitLab\\b": {
+                      "html": 146,
+                      "md": 47
+                    },
+                    "^#{1,3}\\s": {
+                      "html": 0,
+                      "md": 2
+                    },
+                    "\\bDRI\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                },
+                {
+                  "url": "https://about.gitlab.com/blog",
+                  "score": 0.23,
+                  "patterns": {
+                    "\\bGitLab\\b": {
+                      "html": 61,
+                      "md": 14
+                    },
+                    "^#{1,3}\\s": {
+                      "html": 0,
+                      "md": 1
+                    },
+                    "\\bDRI\\b": {
+                      "html": 0,
+                      "md": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "use_case": "internal-kb",
+      "slug": "posthog-handbook",
+      "host": "posthog.com",
+      "discovery": "firecrawl",
+      "status": "published",
+      "seeded": 355,
+      "fetched": 355,
+      "md_count": 355,
+      "md_mean_bytes": 8291,
+      "firecrawl_credits": 0,
+      "wall_seconds": 159.36,
+      "notes": [],
+      "error": null,
+      "bench": {
+        "fixture": {
+          "use_case": "internal-kb",
+          "slug": "posthog-handbook",
+          "host": "posthog.com",
+          "discovery": "firecrawl"
+        },
+        "stages": {
+          "3_fetch": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "posthog-handbook",
+              "host": "posthog.com"
+            },
+            "success": {
+              "name": "fetch_success_rate",
+              "pass_threshold": 0.95,
+              "fresh": 355,
+              "fetchable": 355,
+              "rate": 1.0,
+              "passed": true
+            },
+            "firecrawl": {
+              "name": "fetch_firecrawl_escalation_correctness",
+              "firecrawl_fresh_rows": 0,
+              "note": "0 FRESH rows marked browser_version=firecrawl-*; either fallback was off, no URLs were bot-blocked, or escalation failed.",
+              "passed": true
+            },
+            "conditional_get": {
+              "name": "fetch_conditional_get_efficiency",
+              "pass_threshold": 0.8,
+              "fetch_conditional_decisions": 0,
+              "not_modified_responses": 0,
+              "efficiency": 0.0,
+              "passed": false,
+              "note": "no FETCH_CONDITIONAL decisions in this run (likely a first-time crawl)"
+            }
+          },
+          "4_extract": {
+            "fixture": {
+              "use_case": "internal-kb",
+              "slug": "posthog-handbook",
+              "host": "posthog.com"
+            },
+            "structural": {
+              "name": "extract_structural_preservation",
+              "pass_threshold": 0.85,
+              "n_pages": 15,
+              "mean_ratio": 0.6,
+              "per_type": {
+                "heading": 0.167,
+                "table": 1.0,
+                "list": 0.902,
+                "code_block": 0.6,
+                "link": 0.329
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://posthog.com/handbook/marketing/influencers",
+                  "ratios": {
+                    "heading": 0.25,
+                    "table": 1.0,
+                    "list": 0.9,
+                    "code_block": 1.0,
+                    "link": 0.4
+                  }
+                },
+                {
+                  "url": "https://posthog.com/handbook/why-does-posthog-exist",
+                  "ratios": {
+                    "heading": 0.16666666666666666,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.05263157894736842
+                  }
+                },
+                {
+                  "url": "https://posthog.com/handbook/company/security",
+                  "ratios": {
+                    "heading": 0.10526315789473684,
+                    "table": 1.0,
+                    "list": 1.0,
+                    "code_block": 1.0,
+                    "link": 0.5681818181818182
+                  }
+                }
+              ]
+            },
+            "anchor": {
+              "name": "extract_anchor_injection",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_anchor_ratio": 1.0,
+              "duplicate_anchor_pages": 0,
+              "passed": true,
+              "samples": [
+                {
+                  "url": "https://posthog.com/handbook/marketing/influencers",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://posthog.com/handbook/why-does-posthog-exist",
+                  "ratio": 1.0
+                },
+                {
+                  "url": "https://posthog.com/handbook/company/security",
+                  "ratio": 1.0
+                }
+              ]
+            },
+            "use_case": {
+              "name": "extract_use_case_quality",
+              "pass_threshold": 0.95,
+              "n_pages": 15,
+              "mean_score": 0.629,
+              "per_pattern_mean": {
+                "\\bPostHog\\b": 0.64,
+                "```\\w*": 0.0
+              },
+              "passed": false,
+              "samples": [
+                {
+                  "url": "https://posthog.com/handbook/marketing/influencers",
+                  "score": 0.778,
+                  "patterns": {
+                    "\\bPostHog\\b": {
+                      "html": 9,
+                      "md": 7
+                    },
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^#{1,3}\\s": {
+                      "html": 0,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://posthog.com/handbook/why-does-posthog-exist",
+                  "score": 0.667,
+                  "patterns": {
+                    "\\bPostHog\\b": {
+                      "html": 6,
+                      "md": 4
+                    },
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^#{1,3}\\s": {
+                      "html": 0,
+                      "md": 1
+                    }
+                  }
+                },
+                {
+                  "url": "https://posthog.com/handbook/company/security",
+                  "score": 0.912,
+                  "patterns": {
+                    "\\bPostHog\\b": {
+                      "html": 34,
+                      "md": 31
+                    },
+                    "```\\w*": {
+                      "html": 0,
+                      "md": 0
+                    },
+                    "^#{1,3}\\s": {
+                      "html": 0,
+                      "md": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

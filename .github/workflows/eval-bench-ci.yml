@@ -1,0 +1,95 @@
+name: eval-bench
+
+# Lightweight slice of the full 24-site bench, run on every PR. Goal:
+# catch regressions in seed/fetch/extract before they hit a full run, by
+# diffing against the committed v1.0 baseline.
+#
+# Scope:
+#  * Sitemap-only fixtures (no FIRECRAWL_API_KEY in CI)
+#  * --limit 30 per site, so the whole job finishes in single-digit minutes
+#  * --count-pct-eps 1.0 so the smaller --limit doesn't trip count drift
+#    (the v1.0 baseline used --limit 500; CI rate/pass-fail signals are the
+#    load-bearing ones for "did the pipeline regress")
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: bench-drift (sitemap subset)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package (with evals extras)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[evals]"
+
+      - name: Run bench subset
+        # Two slugs picked for stability + small sitemaps: MDN's sitemap is
+        # CDN-cached and reliable; rfc-editor is a small, stable corpus.
+        # If either flakes in CI, add a third backup slug rather than
+        # widening the eps thresholds.
+        run: |
+          python -m evals.cli bench-suite \
+            --root-dir ./bench-ci-out \
+            --limit 30 \
+            --sample 5 \
+            --slug mdn \
+            --slug rfc-editor
+
+      - name: Diff vs baseline
+        # Soft gate while the CI baseline stabilizes. The v1.0 baseline was
+        # built locally with --limit 500 over a different network profile;
+        # a first-pass CI run on --limit 30 routinely shows environmental
+        # drift (a publish degrades, a sitemap returns fewer URLs, etc.) that
+        # isn't a sift regression. The diff publishes to the job summary +
+        # uploads as an artifact for reviewer eyes; flip ``continue-on-error``
+        # off once a CI-specific baseline lands in ``evals/bench/results/``.
+        continue-on-error: true
+        run: |
+          python -m evals.cli bench-drift \
+            --current  ./bench-ci-out/suite.json \
+            --baseline evals/bench/results/v1.0-baseline-2026-05-31.json \
+            --count-pct-eps 1.0 \
+            --rate-eps 0.10 \
+            --md-out   ./bench-ci-out/drift.md \
+            --json-out ./bench-ci-out/drift.json \
+            --fail-on-regression
+
+      - name: Publish drift summary
+        if: always()
+        run: |
+          if [ -f ./bench-ci-out/drift.md ]; then
+            cat ./bench-ci-out/drift.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-ci-output
+          path: |
+            ./bench-ci-out/suite.json
+            ./bench-ci-out/suite.md
+            ./bench-ci-out/drift.md
+            ./bench-ci-out/drift.json
+          retention-days: 14
