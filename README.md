@@ -37,8 +37,7 @@ sift turns any website you can reach by URL into a complete, always-current, **v
 Requires Python 3.11+.
 
 ```bash
-git clone https://github.com/dvlshah/sift.git && cd sift
-pip install -e .
+pip install sift-engine
 
 # 1. create an index root
 sift init --root ./index
@@ -75,7 +74,7 @@ sift run  --root ./index --config sift.toml --limit 25 --coverage-base planned
 Indexing JS-rendered SPAs needs the optional browser stack:
 
 ```bash
-pip install -e ".[browser]" && python -m playwright install chromium
+pip install 'sift-engine[browser]' && python -m playwright install chromium
 ```
 
 ---
