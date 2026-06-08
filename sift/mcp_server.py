@@ -55,7 +55,7 @@ import mcp.types as mcp_types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from . import paths
+from . import __version__, paths
 from ._io import parse_frontmatter, read_snapshot, split_frontmatter
 from .manifest import open_manifest_ro
 from .registry import (
@@ -1621,7 +1621,7 @@ def build_server(
     # The agent's standing operating procedure (call-order + provenance +
     # token-efficiency contract), surfaced at initialization. Shaped by mode
     # and whether the write tool is enabled so it only describes live tools.
-    server = Server("sift", instructions=_server_instructions(
+    server = Server("sift", version=__version__, instructions=_server_instructions(
         multi=is_multi, enable_index=enable_index))
     index_root = root.resolve()
     allow = host_allow or set()
