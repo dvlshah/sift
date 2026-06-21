@@ -71,7 +71,7 @@ sift --version && which sift-mcp  # confirm it's on PATH
 Download the skill so you (the agent) know how to build, operate, and query an index.
 Read .claude/skills/sift/SKILL.md after downloading — it is the source of truth for the rest.
 ```bash
-SKILL=https://raw.githubusercontent.com/dvlshah/sift/main/.claude/skills/sift
+SKILL=https://raw.githubusercontent.com/dvlshah/sift/v0.1.0/.claude/skills/sift
 mkdir -p .claude/skills/sift/reference
 curl -fsSL $SKILL/SKILL.md -o .claude/skills/sift/SKILL.md
 for f in cli config mcp-tools; do curl -fsSL $SKILL/reference/$f.md -o .claude/skills/sift/reference/$f.md; done
