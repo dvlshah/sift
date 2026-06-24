@@ -45,6 +45,12 @@ evals = [
 browser = [
     "playwright>=1.40",
 ]
+# Tier-2 escalation transport: TLS/HTTP2 fingerprint impersonation. Defeats most
+# Cloudflare/Akamai/Imperva fingerprint blocks with no browser and no per-request
+# cost. Install with: pip install 'sift-engine[impersonate]'
+impersonate = [
+    "curl_cffi>=0.7",
+]
 
 [project.urls]
 Homepage = "https://github.com/dvlshah/sift"

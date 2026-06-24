@@ -27,24 +27,25 @@ from aiolimiter import AsyncLimiter
 from . import paths
 from ._io import sha256_hex
 from .manifest import now_utc
+from .quality import looks_thin
 
 if TYPE_CHECKING:
     # Forward refs only — pulling these eagerly would defeat lazy crawl4ai.
     from .browser import BrowserPool
     from .sites import SiteProfile
     from .sources.firecrawl import FirecrawlScrapePool
+    from .sources.impersonate import CurlCffiScrapePool
 
 USER_AGENT = (
-    "sift/0.1.0 (+https://github.com/dvlshah/sift; "
-    "respectful crawler, 2 req/sec)"
+    "sift/0.1.0 (+https://github.com/dvlshah/sift; respectful crawler, 2 req/sec)"
 )
 
 # Be polite. ATO is a critical public service.
-DEFAULT_RATE = 2.0          # requests per second per host
-DEFAULT_CONCURRENCY = 6     # in-flight requests cap
-DEFAULT_TIMEOUT = 30.0      # seconds per request
-DEFAULT_RETRIES = 3         # transient retries per URL within a single fetch run
-RETRY_BACKOFF_BASE = 1.5    # seconds; multiplied by 2^attempt
+DEFAULT_RATE = 2.0  # requests per second per host
+DEFAULT_CONCURRENCY = 6  # in-flight requests cap
+DEFAULT_TIMEOUT = 30.0  # seconds per request
+DEFAULT_RETRIES = 3  # transient retries per URL within a single fetch run
+RETRY_BACKOFF_BASE = 1.5  # seconds; multiplied by 2^attempt
 MAX_RETRY_BACKOFF = 30.0
 # Hard ceiling on a stored response body. A page over this is refused
 # (not stored, not extracted) — bounds the multiplicative downstream cost
@@ -59,8 +60,9 @@ MAX_BODY_BYTES = 25 * 1024 * 1024
 @dataclass
 class FetchInput:
     """One row of plan.jsonl that the fetcher cares about."""
+
     url: str
-    decision: str                     # FETCH or FETCH_CONDITIONAL
+    decision: str  # FETCH or FETCH_CONDITIONAL
     etag: Optional[str]
     last_modified: Optional[str]
 
@@ -134,9 +136,16 @@ def _no_body_result(
     shared shape for every 304 / 4xx / 5xx / network / guard outcome. Only
     status, the cache headers, the error, and browser_version vary."""
     return FetchResult(
-        url=inp.url, decision=inp.decision, status=status,
-        etag=etag, last_modified=last_modified, raw_hash=None, raw_bytes=0,
-        fetched_at=fetched_at, error=error, browser_version=browser_version,
+        url=inp.url,
+        decision=inp.decision,
+        status=status,
+        etag=etag,
+        last_modified=last_modified,
+        raw_hash=None,
+        raw_bytes=0,
+        fetched_at=fetched_at,
+        error=error,
+        browser_version=browser_version,
     )
 
 
@@ -189,6 +198,111 @@ async def _one_request(
                 return 0, None, f"{type(e).__name__}: {e}"
 
 
+# Statuses that trigger escalation to the self-hosted browser tier when no
+# impersonation pool contributes its own set. Bot-block / rate-limit signatures.
+BROWSER_ESCALATE_STATUSES = (403, 429, 503)
+
+
+def _escalate_status_set(
+    impersonate_pool, browser_pool, firecrawl_pool
+) -> frozenset[int]:
+    """Union of the wired tiers' trigger statuses. Empty when no escalation tier
+    is configured, so the native-only path is byte-identical to before."""
+    s: set[int] = set()
+    if impersonate_pool is not None:
+        s.update(impersonate_pool.escalate_statuses)
+    if browser_pool is not None:
+        s.update(BROWSER_ESCALATE_STATUSES)
+    if firecrawl_pool is not None:
+        s.update(firecrawl_pool.fallback_statuses)
+    return frozenset(s)
+
+
+async def _escalate_browser_tier(
+    inp: "FetchInput",
+    root: Path,
+    profile: "SiteProfile",
+    pool: "BrowserPool",
+    thin_text_threshold: int,
+) -> "FetchResult":
+    """The self-hosted browser as an escalation rung (not just profile-routing).
+
+    Renders ``inp.url`` and returns its FetchResult, but RAISES ``EscalateError``
+    on a render failure or still-thin output so the ladder falls through to the
+    paid tier — unlike ``_fetch_browser`` (the direct-dispatch path), which
+    returns the failure row as-is.
+    """
+    from .sources.impersonate import EscalateError
+
+    res = await _fetch_browser(inp, root, profile, pool)
+    if res.error is not None or res.raw_hash is None:
+        raise EscalateError(f"browser {res.error or 'no-body'}")
+    if thin_text_threshold > 0 and looks_thin(
+        read_raw_blob(root, res.raw_hash), res.content_type, thin_text_threshold
+    ):
+        raise EscalateError("browser still-thin")
+    return res
+
+
+async def _escalate(
+    inp: "FetchInput",
+    root: Path,
+    reason: str,
+    *,
+    impersonate_pool: Optional["CurlCffiScrapePool"] = None,
+    browser_pool: Optional["BrowserPool"] = None,
+    profile: Optional["SiteProfile"] = None,
+    firecrawl_pool: Optional["FirecrawlScrapePool"] = None,
+    allowed_hosts: Optional[frozenset[str]] = None,
+    thin_text_threshold: int = 0,
+) -> Optional["FetchResult"]:
+    """Walk the escalation ladder for a URL the native fetch couldn't serve well.
+
+    * Tier 2 — curl_cffi impersonation (free, self-hosted): defeats TLS-fingerprint
+      and UA blocks without a browser; tried first so it absorbs most escalations
+      at zero cost.
+    * Tier 3a — self-hosted browser (free): renders JS shells / challenges that
+      curl_cffi can't (it executes no JS). Thin content is fine to send here —
+      rendering is exactly how an empty SPA shell becomes real content, and it
+      costs nothing but local compute.
+    * Tier 3b — Firecrawl (paid, browser+proxy): optional last resort for the
+      hardest anti-bot. A ``thin-content`` reason only reaches it when
+      ``escalate_on_thin`` is set, so empty shells never silently burn credits.
+
+    Returns the first FetchResult that passes a tier's quality gate, or ``None``
+    when every available tier declines (caller keeps the native failure). Tier
+    errors are swallowed per-tier — escalation never crashes the run.
+    """
+    from .sources.impersonate import EscalateError
+
+    if impersonate_pool is not None:
+        try:
+            return await impersonate_pool.fetch(inp, root, allowed_hosts=allowed_hosts)
+        except EscalateError:
+            pass  # still blocked/thin at tier 2 → fall through
+
+    if browser_pool is not None and profile is not None:
+        try:
+            return await _escalate_browser_tier(
+                inp, root, profile, browser_pool, thin_text_threshold
+            )
+        except EscalateError:
+            pass  # render failed/thin → fall through to the paid tier
+
+    if firecrawl_pool is not None and firecrawl_pool.budget_remaining() > 0:
+        if reason == "thin-content" and not getattr(
+            firecrawl_pool.cfg, "escalate_on_thin", False
+        ):
+            return None
+        from .sources.firecrawl import FirecrawlError
+
+        try:
+            return await firecrawl_pool.fetch(inp, root)
+        except FirecrawlError:
+            pass  # native failure stands; pool counters advanced for telemetry
+    return None
+
+
 async def fetch_one(
     client: httpx.AsyncClient,
     inp: FetchInput,
@@ -198,6 +312,10 @@ async def fetch_one(
     *,
     retries: int = DEFAULT_RETRIES,
     firecrawl_pool: Optional["FirecrawlScrapePool"] = None,
+    impersonate_pool: Optional["CurlCffiScrapePool"] = None,
+    browser_pool: Optional["BrowserPool"] = None,
+    profile: Optional["SiteProfile"] = None,
+    thin_text_threshold: int = 0,
     allowed_hosts: Optional[frozenset[str]] = None,
 ) -> FetchResult:
     """Fetch with bounded retry on transient errors. Idempotent at the URL level.
@@ -220,14 +338,11 @@ async def fetch_one(
         status, resp, err = await _one_request(client, inp, limiter, semaphore)
         last_status = status
         last_error = err
-        transient = (
-            err is not None
-            or status in (408, 429, 500, 502, 503, 504)
-        )
+        transient = err is not None or status in (408, 429, 500, 502, 503, 504)
         if not transient:
             break
         if attempt < retries:
-            backoff = min(MAX_RETRY_BACKOFF, RETRY_BACKOFF_BASE * (2 ** attempt))
+            backoff = min(MAX_RETRY_BACKOFF, RETRY_BACKOFF_BASE * (2**attempt))
             # Respect Retry-After if present
             if resp is not None and "retry-after" in resp.headers:
                 try:
@@ -237,7 +352,27 @@ async def fetch_one(
             await asyncio.sleep(backoff)
 
     now = now_utc()
+    escalate_statuses = _escalate_status_set(
+        impersonate_pool, browser_pool, firecrawl_pool
+    )
+
     if resp is None:
+        # No HTTP exchange completed after retries — frequently a TLS-fingerprint
+        # reset on a hardened edge. Let the ladder try the impersonation tier
+        # (a curl_cffi handshake often succeeds where httpx's was reset).
+        esc = await _escalate(
+            inp,
+            root,
+            last_error or "network-failure",
+            impersonate_pool=impersonate_pool,
+            browser_pool=browser_pool,
+            profile=profile,
+            firecrawl_pool=firecrawl_pool,
+            allowed_hosts=allowed_hosts,
+            thin_text_threshold=thin_text_threshold,
+        )
+        if esc is not None:
+            return esc
         return _no_body_result(inp, last_status, last_error or "network-failure", now)
 
     etag = resp.headers.get("etag")
@@ -247,25 +382,36 @@ async def fetch_one(
         return _no_body_result(inp, 304, None, now, etag=etag, last_modified=last_mod)
 
     if resp.status_code in (404, 410):
-        return _no_body_result(inp, resp.status_code, None, now, etag=etag, last_modified=last_mod)
+        return _no_body_result(
+            inp, resp.status_code, None, now, etag=etag, last_modified=last_mod
+        )
 
     if resp.status_code >= 400:
-        # Firecrawl fallback for bot-block signatures (default 401/403). Only
-        # consulted when a pool was provided, the status is in its configured
-        # fallback set, and credits remain. FirecrawlError preserves the
-        # native failure — the escalation never crashes the run, and the
-        # pool's counters still advance for telemetry / the run summary.
-        if (firecrawl_pool is not None
-                and resp.status_code in firecrawl_pool.fallback_statuses
-                and firecrawl_pool.budget_remaining() > 0):
-            from .sources.firecrawl import FirecrawlError
-            try:
-                return await firecrawl_pool.fetch(inp, root)
-            except FirecrawlError:
-                pass  # native failure stands; counters advanced inside pool.fetch
+        # Bot-block / rate-limit signatures escalate up the ladder (curl_cffi
+        # first, then Firecrawl). ``escalate_statuses`` is the union of the wired
+        # tiers' triggers; with no pools it's empty and this is a no-op, so the
+        # native-only path stays byte-identical.
+        if resp.status_code in escalate_statuses:
+            esc = await _escalate(
+                inp,
+                root,
+                f"http-{resp.status_code}",
+                impersonate_pool=impersonate_pool,
+                browser_pool=browser_pool,
+                profile=profile,
+                firecrawl_pool=firecrawl_pool,
+                allowed_hosts=allowed_hosts,
+                thin_text_threshold=thin_text_threshold,
+            )
+            if esc is not None:
+                return esc
         return _no_body_result(
-            inp, resp.status_code, f"http-{resp.status_code}", now,
-            etag=etag, last_modified=last_mod,
+            inp,
+            resp.status_code,
+            f"http-{resp.status_code}",
+            now,
+            etag=etag,
+            last_modified=last_mod,
         )
 
     # 2xx with body.
@@ -277,21 +423,62 @@ async def fetch_one(
         final_host = (resp.url.host or "").lower()
         if final_host and final_host not in allowed_hosts:
             return _no_body_result(
-                inp, resp.status_code, f"redirect-off-allowlist:{final_host}", now,
-                etag=etag, last_modified=last_mod,
+                inp,
+                resp.status_code,
+                f"redirect-off-allowlist:{final_host}",
+                now,
+                etag=etag,
+                last_modified=last_mod,
             )
     body = resp.content
     if len(body) > MAX_BODY_BYTES:
         return _no_body_result(
-            inp, resp.status_code, f"body-too-large:{len(body)}>{MAX_BODY_BYTES}", now,
-            etag=etag, last_modified=last_mod,
+            inp,
+            resp.status_code,
+            f"body-too-large:{len(body)}>{MAX_BODY_BYTES}",
+            now,
+            etag=etag,
+            last_modified=last_mod,
         )
+
+    # Content-quality escalation: a 200 carrying an empty SPA shell or a JS
+    # challenge interstitial is a SILENT failure the status-only path missed —
+    # it has a success code but ~no content. Route it up the ladder before
+    # committing. If no tier improves it, the real 200 still stands (best
+    # available). No-op unless a tier is wired AND thin_text_threshold > 0.
+    ct = resp.headers.get("content-type")
+    any_tier = (
+        impersonate_pool is not None
+        or browser_pool is not None
+        or firecrawl_pool is not None
+    )
+    if any_tier and looks_thin(body, ct, thin_text_threshold):
+        esc = await _escalate(
+            inp,
+            root,
+            "thin-content",
+            impersonate_pool=impersonate_pool,
+            browser_pool=browser_pool,
+            profile=profile,
+            firecrawl_pool=firecrawl_pool,
+            allowed_hosts=allowed_hosts,
+            thin_text_threshold=thin_text_threshold,
+        )
+        if esc is not None:
+            return esc
+
     raw_hash, n_bytes = store_body(root, body)
     return FetchResult(
-        url=inp.url, decision=inp.decision, status=resp.status_code,
-        etag=etag, last_modified=last_mod, raw_hash=raw_hash, raw_bytes=n_bytes,
-        fetched_at=now, error=None,
-        content_type=resp.headers.get("content-type"),
+        url=inp.url,
+        decision=inp.decision,
+        status=resp.status_code,
+        etag=etag,
+        last_modified=last_mod,
+        raw_hash=raw_hash,
+        raw_bytes=n_bytes,
+        fetched_at=now,
+        error=None,
+        content_type=ct,
     )
 
 
@@ -327,18 +514,26 @@ async def _fetch_browser(
 
     if page.error is not None:
         return _no_body_result(
-            inp, page.status_code, page.error, now, browser_version=BROWSER_VERSION,
+            inp,
+            page.status_code,
+            page.error,
+            now,
+            browser_version=BROWSER_VERSION,
         )
 
     body = page.html.encode("utf-8")
     raw_hash, n_bytes = store_body(root, body)
     headers = page.headers or {}
     return FetchResult(
-        url=inp.url, decision=inp.decision, status=page.status_code,
+        url=inp.url,
+        decision=inp.decision,
+        status=page.status_code,
         etag=headers.get("etag"),
         last_modified=headers.get("last-modified"),
-        raw_hash=raw_hash, raw_bytes=n_bytes,
-        fetched_at=now, error=None,
+        raw_hash=raw_hash,
+        raw_bytes=n_bytes,
+        fetched_at=now,
+        error=None,
         browser_version=BROWSER_VERSION,
         content_type=headers.get("content-type"),
     )
@@ -359,7 +554,10 @@ async def _guarded_fetch(inp: "FetchInput", coro) -> "FetchResult":
         return await coro
     except Exception as e:
         return _no_body_result(
-            inp, 0, f"task-crash:{type(e).__name__}: {e}"[:300], now_utc(),
+            inp,
+            0,
+            f"task-crash:{type(e).__name__}: {e}"[:300],
+            now_utc(),
         )
 
 
@@ -376,6 +574,8 @@ async def fetch_all(
     browser_pool: Optional["BrowserPool"] = None,
     user_agent: Optional[str] = None,
     firecrawl_pool: Optional["FirecrawlScrapePool"] = None,
+    impersonate_pool: Optional["CurlCffiScrapePool"] = None,
+    thin_text_threshold: int = 0,
     allowed_hosts: Optional[frozenset[str]] = None,
 ) -> int:
     """Fetch all inputs honoring rate limit. Appends each result to fetch_log
@@ -424,7 +624,9 @@ async def fetch_all(
     semaphore = asyncio.Semaphore(concurrency)
     count = 0
 
-    limits = httpx.Limits(max_connections=concurrency * 2, max_keepalive_connections=concurrency)
+    limits = httpx.Limits(
+        max_connections=concurrency * 2, max_keepalive_connections=concurrency
+    )
     timeout_cfg = httpx.Timeout(timeout, connect=10.0)
 
     async with httpx.AsyncClient(
@@ -438,15 +640,31 @@ async def fetch_all(
             for host, items in by_host.items():
                 limiter = limiters[host]
                 for inp in items:
-                    tasks.append(_guarded_fetch(inp, fetch_one(
-                        client, inp, root, limiter, semaphore,
-                        firecrawl_pool=firecrawl_pool,
-                        allowed_hosts=allowed_hosts,
-                    )))
+                    tasks.append(
+                        _guarded_fetch(
+                            inp,
+                            fetch_one(
+                                client,
+                                inp,
+                                root,
+                                limiter,
+                                semaphore,
+                                firecrawl_pool=firecrawl_pool,
+                                impersonate_pool=impersonate_pool,
+                                browser_pool=browser_pool,
+                                profile=profile,
+                                thin_text_threshold=thin_text_threshold,
+                                allowed_hosts=allowed_hosts,
+                            ),
+                        )
+                    )
             for inp in browser_inputs:
                 assert profile is not None and browser_pool is not None
-                tasks.append(_guarded_fetch(
-                    inp, _fetch_browser(inp, root, profile, browser_pool)))
+                tasks.append(
+                    _guarded_fetch(
+                        inp, _fetch_browser(inp, root, profile, browser_pool)
+                    )
+                )
             for coro in asyncio.as_completed(tasks):
                 result = await coro
                 log_f.write(result.to_json_line())
@@ -455,5 +673,3 @@ async def fetch_all(
                 if on_result is not None:
                     on_result(result)
     return count
-
-
