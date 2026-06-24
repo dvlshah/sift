@@ -22,7 +22,27 @@ concurrency  = 8          # in-flight HTTP cap, still rate-limited (CLI: --concu
 timeout_sec  = 30.0
 retries      = 3          # per-URL transient-error retries within one run
 # user_agent = "my-crawler/1.0 (+contact)"   # unset => sift's identifying UA
-# [crawl.firecrawl]  max_credits_per_run = N  # caps --firecrawl-fallback spend
+thin_text_threshold = 500 # a 2xx with fewer visible chars (empty SPA shell / JS
+                          # challenge) escalates up the ladder; 0 disables the trigger
+
+# ---- Tier-2 escalation: curl_cffi TLS impersonation (free, self-hosted) -----
+# Defeats most Cloudflare/Akamai/Imperva fingerprint blocks with no browser.
+# Needs the [impersonate] extra. Enable via this OR the --impersonate-fallback flag.
+[crawl.impersonate]
+enabled           = false
+impersonate       = "chrome"          # curl_cffi target: chrome|safari|edge|...
+escalate_statuses = [403, 429, 503]   # native statuses that trigger escalation
+rate_per_sec      = 1.0
+concurrency       = 4
+timeout_sec       = 30.0
+
+# ---- Tier-3 escalation: Firecrawl /v2/scrape (paid; --firecrawl-fallback) ---
+[crawl.firecrawl]
+# enabled = true
+# max_credits_per_run = 100           # caps spend per run
+# escalate_on_thin = false            # if true, a thin 200 may also reach the
+                                      # PAID tier; off by default (free tiers
+                                      # handle thin content first)
 
 # ---- Publish-gate thresholds -----------------------------------------------
 [publish]

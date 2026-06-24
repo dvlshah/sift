@@ -95,13 +95,16 @@ pip install -e ".[dev,evals]"     # CLI + MCP server + eval suite + test deps
 # minimal runtime only: pip install -e .
 ```
 
-Optional browser stack — **only** if you must index JavaScript-rendered SPAs (Next.js/Vue/React pages a profile opts into):
+Optional escalation tiers for hardened / JS-rendered sites (the fetch ladder is `native httpx → curl_cffi → browser → Firecrawl`, each tried only on need):
 
 ```bash
-pip install -e ".[browser]" && python -m playwright install chromium
+pip install -e ".[impersonate]"   # tier 2: curl_cffi TLS impersonation — free, no browser
+pip install -e ".[browser]" && python -m playwright install chromium   # tier 3: render JS
 ```
 
-Browser fetch costs 150–300 MB RAM per render and is **off** in the default config (`[browser].enabled`). Leave it off unless a profile actually routes URLs to it; static HTML and PDFs never need it.
+- **`[impersonate]`** (free, self-hosted) defeats most Cloudflare/Akamai/Imperva *fingerprint* blocks — enable with `--impersonate-fallback` or `[crawl.impersonate].enabled`. Try this first for 401/403/429.
+- **`[browser]`** renders JS-only pages; ~150–300 MB RAM per render, **off** by default (`[browser].enabled`). Chromium launches lazily on first render, so an enabled-but-unused browser costs nothing; it also degrades gracefully if the dep is missing (the run continues on the other tiers).
+- **Firecrawl** (`--firecrawl-fallback`, paid) is the last resort for JS-challenge edges; never fires on thin content unless `[crawl.firecrawl].escalate_on_thin=true`.
 
 Entry points after install: `sift` (pipeline CLI), `sift-mcp` (MCP server), `sift-evals` (eval harness). Verify with `sift --help`.
 
@@ -253,7 +256,8 @@ Then set `profile = "sift.sites.irs:IRSProfile"` in `sift.toml`, reseed, and run
 | Read tools return "No published snapshot at `<root>/current/`" | pipeline never completed a passing publish | `snapshot_status` for gate detail; finish `sift run`; for capped runs see coverage gate below |
 | `sift run` exits **2** / G3 coverage gate failed on a deliberately partial crawl | most seeded URLs not in a terminal state | `--coverage-base planned` (with `--limit`) or `filtered-tiers` (with `--tier`) |
 | SPA page is empty or missing | browser fetch off; URL was `SKIPPED_BROWSER_DISABLED` | `pip install -e ".[browser]" && playwright install chromium`, set `[browser].enabled=true`, ensure the profile routes it |
-| Fetch fails with 401/403 | bot protection on the source | add `--firecrawl-fallback` (needs `FIRECRAWL_API_KEY`); Kasada-class sites remain out of reach |
+| Fetch fails with 401/403/429 | bot protection on the source | add `--impersonate-fallback` first (free, `[impersonate]` extra — clears most fingerprint blocks); then `[browser].enabled=true` for JS; then `--firecrawl-fallback` (paid) for JS-challenge edges. Kasada-class sites remain out of reach |
+| 200 but extracted page is empty (SPA shell / challenge) | content is JS-rendered or a soft block | the content-quality trigger auto-escalates when a tier is wired — add `--impersonate-fallback` and/or `[browser].enabled=true` |
 | `read_md verify=true` → `isError` (hash mismatch) | file changed since publish — untrusted | re-publish from a clean run; do **not** cite the file |
 | Multi-index tool errors that an index is required | called a content tool without `index=` | `list_indexes`, then pass `index=<slug>` (`read_md`/`read_facts` always require it) |
 | `index_url` refused / "not writeable" | server lacks `--enable-index`, host not in `seed.host_allow`, or the sub-index's `sift.toml` has no `[seed].host_allow` | enable the flag; add the host; give the sub-index an allow-list and restart |

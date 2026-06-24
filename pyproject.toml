@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sift-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sift — deterministic website indexing for grep-first LLM agents"
 readme = "README.md"
 license = "Apache-2.0"
@@ -39,8 +39,8 @@ evals = [
     "jsonschema>=4",
 ]
 # Optional browser-rendering stack for SPA fetch (see docs/design/browser-fetch.md).
-# Install with: pip install 'sift[browser]' && python -m playwright install chromium
-# History: v0.2.0 originally bundled crawl4ai; swapped to bare Playwright after
+# Install with: pip install 'sift-engine[browser]' && python -m playwright install chromium
+# History: an early prototype bundled crawl4ai; swapped to bare Playwright after
 # reproducible hangs on analytics-heavy SPAs. See archive/crawl4ai/README.md.
 browser = [
     "playwright>=1.40",
