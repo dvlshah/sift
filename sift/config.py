@@ -96,6 +96,9 @@ class CrawlConfig:
     # routes UP the transport ladder instead of being committed. 0 disables it
     # (back-compat for callers that don't opt in).
     thin_text_threshold: int = 500
+    # Adaptive per-host floor: after this many native blocks, a host's remaining
+    # URLs skip the native round-trip and start at the escalation ladder. 0 = off.
+    host_block_floor: int = 3
     firecrawl: FirecrawlScrapeConfig = field(default_factory=FirecrawlScrapeConfig)
     impersonate: ImpersonateConfig = field(default_factory=ImpersonateConfig)
 
@@ -317,6 +320,7 @@ def load_config(path: Optional[Path] = None) -> IndexConfig:
             retries=int(crawl_raw.get("retries", 3)),
             user_agent=crawl_raw.get("user_agent"),
             thin_text_threshold=int(crawl_raw.get("thin_text_threshold", 500)),
+            host_block_floor=int(crawl_raw.get("host_block_floor", 3)),
             firecrawl=_parse_firecrawl_config(crawl_raw.get("firecrawl", {})),
             impersonate=_parse_impersonate_config(crawl_raw.get("impersonate", {})),
         ),
