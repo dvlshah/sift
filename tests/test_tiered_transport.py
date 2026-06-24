@@ -116,7 +116,13 @@ class FakeFirecrawl:
 
 
 async def _run_fetch(
-    tmp_path, *, impersonate_pool=None, firecrawl_pool=None, thin_text_threshold=500
+    tmp_path,
+    *,
+    impersonate_pool=None,
+    browser_pool=None,
+    profile=None,
+    firecrawl_pool=None,
+    thin_text_threshold=500,
 ):
     inp = FetchInput(url=URL, decision="FETCH", etag=None, last_modified=None)
     async with httpx.AsyncClient() as client:
@@ -128,6 +134,8 @@ async def _run_fetch(
             asyncio.Semaphore(8),
             retries=0,
             impersonate_pool=impersonate_pool,
+            browser_pool=browser_pool,
+            profile=profile,
             firecrawl_pool=firecrawl_pool,
             thin_text_threshold=thin_text_threshold,
         )
@@ -217,3 +225,108 @@ async def test_no_pools_is_native_only_backcompat(tmp_path):
     assert res.status == 403
     assert res.raw_hash is None
     assert res.error == "http-403"
+
+
+# ---- tier-3a: self-hosted browser ------------------------------------------
+
+import sift.fetch as fetchmod  # noqa: E402
+
+BROWSER_VER = "browser-test"
+
+
+def _stub_browser_success(monkeypatch):
+    """Patch _fetch_browser to render real content into the blob store."""
+
+    async def fake(inp, root, profile, pool):
+        from sift.fetch import FetchResult, store_body
+
+        raw_hash, n = store_body(
+            root, b"<html><body>" + b"real " * 200 + b"</body></html>"
+        )
+        return FetchResult(
+            url=inp.url,
+            decision=inp.decision,
+            status=200,
+            etag=None,
+            last_modified=None,
+            raw_hash=raw_hash,
+            raw_bytes=n,
+            fetched_at="t",
+            error=None,
+            browser_version=BROWSER_VER,
+            content_type="text/html",
+        )
+
+    monkeypatch.setattr(fetchmod, "_fetch_browser", fake)
+
+
+def _stub_browser_failure(monkeypatch):
+    async def fake(inp, root, profile, pool):
+        from sift.fetch import FetchResult
+
+        return FetchResult(
+            url=inp.url,
+            decision=inp.decision,
+            status=0,
+            etag=None,
+            last_modified=None,
+            raw_hash=None,
+            raw_bytes=0,
+            fetched_at="t",
+            error="render-timeout",
+            browser_version=BROWSER_VER,
+            content_type=None,
+        )
+
+    monkeypatch.setattr(fetchmod, "_fetch_browser", fake)
+
+
+@respx.mock
+async def test_block_escalates_to_browser_tier(tmp_path, monkeypatch):
+    # browser is the ONLY tier → a 403 escalates straight to it
+    _stub_browser_success(monkeypatch)
+    respx.get(URL).mock(return_value=Response(403))
+    res = await _run_fetch(tmp_path, browser_pool=object(), profile=object())
+    assert res.browser_version == BROWSER_VER
+
+
+@respx.mock
+async def test_thin_200_escalates_to_browser_free(tmp_path, monkeypatch):
+    # thin reaches the FREE browser tier with no escalate_on_thin gate needed
+    _stub_browser_success(monkeypatch)
+    respx.get(URL).mock(
+        return_value=Response(200, content=THIN, headers={"content-type": "text/html"})
+    )
+    res = await _run_fetch(tmp_path, browser_pool=object(), profile=object())
+    assert res.browser_version == BROWSER_VER
+
+
+@respx.mock
+async def test_browser_failure_falls_through_to_firecrawl(tmp_path, monkeypatch):
+    # order: impersonate raises → browser fails → Firecrawl serves it
+    _stub_browser_failure(monkeypatch)
+    respx.get(URL).mock(return_value=Response(403))
+    imp = FakeImpersonate(raise_exc=EscalateError("blocked"))
+    fc = FakeFirecrawl(result=_result(200, FIRECRAWL_FETCHER_VERSION))
+    res = await _run_fetch(
+        tmp_path,
+        impersonate_pool=imp,
+        browser_pool=object(),
+        profile=object(),
+        firecrawl_pool=fc,
+    )
+    assert imp.calls == 1 and fc.calls == 1
+    assert res.browser_version == FIRECRAWL_FETCHER_VERSION
+
+
+@respx.mock
+async def test_browser_precedes_firecrawl(tmp_path, monkeypatch):
+    # when the browser succeeds, the paid tier is never consulted
+    _stub_browser_success(monkeypatch)
+    respx.get(URL).mock(return_value=Response(403))
+    fc = FakeFirecrawl(result=_result(200, FIRECRAWL_FETCHER_VERSION))
+    res = await _run_fetch(
+        tmp_path, browser_pool=object(), profile=object(), firecrawl_pool=fc
+    )
+    assert fc.calls == 0
+    assert res.browser_version == BROWSER_VER

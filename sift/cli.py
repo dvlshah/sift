@@ -73,7 +73,9 @@ from .publish import build_artifacts, publish as publish_phase
 
 def _root_opt(f):
     return click.option(
-        "--root", required=True, type=click.Path(path_type=Path),
+        "--root",
+        required=True,
+        type=click.Path(path_type=Path),
         help="Index root directory (manifest.db + runs/ live here)",
     )(f)
 
@@ -81,10 +83,12 @@ def _root_opt(f):
 def _config_opt(f):
     """Shared --config flag. Defaults to sift.toml in cwd."""
     return click.option(
-        "--config", "config_path", type=click.Path(exists=False, path_type=Path),
+        "--config",
+        "config_path",
+        type=click.Path(exists=False, path_type=Path),
         default=None,
         help="Path to config TOML. Defaults to ./sift.toml or "
-             "./sift.local.toml if present.",
+        "./sift.local.toml if present.",
     )(f)
 
 
@@ -141,7 +145,11 @@ def _fail_run_on_crash(conn, run_id: str):
         try:
             with transaction(conn):
                 record_run_end(
-                    conn, run_id, now_utc(), "failed", "{}",
+                    conn,
+                    run_id,
+                    now_utc(),
+                    "failed",
+                    "{}",
                     error=f"{type(e).__name__}: {e}"[:1000],
                 )
         except Exception:
@@ -169,6 +177,7 @@ def _build_firecrawl_pool(cfg: IndexConfig, flag_enable: bool):
         )
         return None
     from .sources.firecrawl import FirecrawlScrapePool
+
     return FirecrawlScrapePool(cfg.crawl.firecrawl)
 
 
@@ -194,6 +203,7 @@ def _build_impersonate_pool(cfg: IndexConfig, flag_enable: bool):
         )
         return None
     from .sources.impersonate import CurlCffiScrapePool
+
     return CurlCffiScrapePool(cfg.crawl.impersonate)
 
 
@@ -247,41 +257,90 @@ def init(root: Path):
 @main.command()
 @_root_opt
 @_config_opt
-@click.option("--from-json", "json_path", type=click.Path(exists=True, path_type=Path),
-              help="Seed from a {links:[{url,...}, ...]} discovery dump")
-@click.option("--from-sitemap", "sitemap_url", type=str,
-              help="Seed by fetching one sitemap.xml URL (recursive on sitemap-index)")
-@click.option("--from-domain", "domain_url", type=str, default=None,
-              help="Seed by auto-discovering every sitemap for a domain. "
-                   "Parses robots.txt's Sitemap: directives + probes "
-                   "well-known paths (/sitemap.xml, /sitemap_index.xml, "
-                   "/wp-sitemap.xml, ...) + handles gzipped + plain-text "
-                   "fallback. Use this when you only know the domain.")
-@click.option("--from-firecrawl-map", "firecrawl_map_url", type=str, default=None,
-              help="Seed by Firecrawl /v2/map (blended sitemap + cached crawl + SERP). "
-                   "Closes the discovery gap for sites with no sitemap, sparse sitemaps, "
-                   "or bot-blocked sitemap fetches. Requires FIRECRAWL_API_KEY env.")
-@click.option("--firecrawl-limit", type=int, default=500, show_default=True,
-              help="Max URLs to request from --from-firecrawl-map.")
-@click.option("--firecrawl-search", type=str, default=None,
-              help='Server-side keyword filter for --from-firecrawl-map results '
-                   '(e.g. "authentication" to scope discovery within a large site).')
-@click.option("--firecrawl-include-subdomains", is_flag=True, default=False,
-              help="Include subdomain URLs in --from-firecrawl-map results.")
-@click.option("--host-allow", multiple=True, default=(),
-              help="Only seed URLs on these hosts (default: config seed.host_allow)")
-@click.option("--exclude", "extra_excludes", multiple=True, default=(),
-              help="Additional regex patterns; URLs matching any are skipped.")
-@click.option("--no-default-excludes", is_flag=True,
-              help="Disable built-in excludes (/sitemap*, /api/*, /print/*, etc.).")
-def seed(root: Path, config_path: Optional[Path],
-         json_path: Optional[Path], sitemap_url: Optional[str],
-         domain_url: Optional[str],
-         firecrawl_map_url: Optional[str],
-         firecrawl_limit: int, firecrawl_search: Optional[str],
-         firecrawl_include_subdomains: bool,
-         host_allow: tuple[str, ...],
-         extra_excludes: tuple[str, ...], no_default_excludes: bool):
+@click.option(
+    "--from-json",
+    "json_path",
+    type=click.Path(exists=True, path_type=Path),
+    help="Seed from a {links:[{url,...}, ...]} discovery dump",
+)
+@click.option(
+    "--from-sitemap",
+    "sitemap_url",
+    type=str,
+    help="Seed by fetching one sitemap.xml URL (recursive on sitemap-index)",
+)
+@click.option(
+    "--from-domain",
+    "domain_url",
+    type=str,
+    default=None,
+    help="Seed by auto-discovering every sitemap for a domain. "
+    "Parses robots.txt's Sitemap: directives + probes "
+    "well-known paths (/sitemap.xml, /sitemap_index.xml, "
+    "/wp-sitemap.xml, ...) + handles gzipped + plain-text "
+    "fallback. Use this when you only know the domain.",
+)
+@click.option(
+    "--from-firecrawl-map",
+    "firecrawl_map_url",
+    type=str,
+    default=None,
+    help="Seed by Firecrawl /v2/map (blended sitemap + cached crawl + SERP). "
+    "Closes the discovery gap for sites with no sitemap, sparse sitemaps, "
+    "or bot-blocked sitemap fetches. Requires FIRECRAWL_API_KEY env.",
+)
+@click.option(
+    "--firecrawl-limit",
+    type=int,
+    default=500,
+    show_default=True,
+    help="Max URLs to request from --from-firecrawl-map.",
+)
+@click.option(
+    "--firecrawl-search",
+    type=str,
+    default=None,
+    help="Server-side keyword filter for --from-firecrawl-map results "
+    '(e.g. "authentication" to scope discovery within a large site).',
+)
+@click.option(
+    "--firecrawl-include-subdomains",
+    is_flag=True,
+    default=False,
+    help="Include subdomain URLs in --from-firecrawl-map results.",
+)
+@click.option(
+    "--host-allow",
+    multiple=True,
+    default=(),
+    help="Only seed URLs on these hosts (default: config seed.host_allow)",
+)
+@click.option(
+    "--exclude",
+    "extra_excludes",
+    multiple=True,
+    default=(),
+    help="Additional regex patterns; URLs matching any are skipped.",
+)
+@click.option(
+    "--no-default-excludes",
+    is_flag=True,
+    help="Disable built-in excludes (/sitemap*, /api/*, /print/*, etc.).",
+)
+def seed(
+    root: Path,
+    config_path: Optional[Path],
+    json_path: Optional[Path],
+    sitemap_url: Optional[str],
+    domain_url: Optional[str],
+    firecrawl_map_url: Optional[str],
+    firecrawl_limit: int,
+    firecrawl_search: Optional[str],
+    firecrawl_include_subdomains: bool,
+    host_allow: tuple[str, ...],
+    extra_excludes: tuple[str, ...],
+    no_default_excludes: bool,
+):
     """Add URLs to the manifest from a discovery dump, a sitemap, or Firecrawl.
 
     Each URL is canonicalized, classified, and upserted unless it matches an
@@ -304,12 +363,14 @@ def seed(root: Path, config_path: Optional[Path],
     if domain_url:
         sources.append(AutoSitemapSource(domain_url, user_agent=cfg.crawl.user_agent))
     if firecrawl_map_url:
-        sources.append(FirecrawlMapSource(
-            firecrawl_map_url,
-            limit=firecrawl_limit,
-            search=firecrawl_search,
-            include_subdomains=firecrawl_include_subdomains,
-        ))
+        sources.append(
+            FirecrawlMapSource(
+                firecrawl_map_url,
+                limit=firecrawl_limit,
+                search=firecrawl_search,
+                include_subdomains=firecrawl_include_subdomains,
+            )
+        )
     if not sources:
         raise click.UsageError(
             "provide --from-json, --from-sitemap, --from-domain, or --from-firecrawl-map"
@@ -357,9 +418,7 @@ def seed(root: Path, config_path: Optional[Path],
                 continue
             tier = classify_tier(url).value
             pg = parent_guide(url)
-            outcome = upsert_seed(
-                conn, url, tier, pg, CLASSIFIER_VERSION, lm, now
-            )
+            outcome = upsert_seed(conn, url, tier, pg, CLASSIFIER_VERSION, lm, now)
             if outcome == "inserted":
                 inserted += 1
             elif outcome == "reclassified":
@@ -372,7 +431,7 @@ def seed(root: Path, config_path: Optional[Path],
         click.echo(
             f"warn: discovery source(s) [{names}] yielded zero URLs. Common causes:\n"
             "  - source fetch failed (see warnings above)\n"
-            "  - UA rejected by the server (try [crawl] user_agent = \"...\" in your config)\n"
+            '  - UA rejected by the server (try [crawl] user_agent = "..." in your config)\n'
             "  - sitemap-index referenced sub-sitemaps that all failed\n"
             "  - the source returned URLs in an unexpected shape",
             err=True,
@@ -392,13 +451,21 @@ def seed(root: Path, config_path: Optional[Path],
             "links into one — check the upstream sitemap or /map source.",
             err=True,
         )
-    click.echo(json.dumps({
-        "seeded": len(seeds), "inserted": inserted, "reclassified": reclassified,
-        "skipped_host": skipped_host, "skipped_excluded": skipped_excluded,
-        "skipped_malformed": skipped_malformed,
-        "exclude_patterns": patterns,
-        "total_in_manifest": _total_rows(conn),
-    }, indent=2))
+    click.echo(
+        json.dumps(
+            {
+                "seeded": len(seeds),
+                "inserted": inserted,
+                "reclassified": reclassified,
+                "skipped_host": skipped_host,
+                "skipped_excluded": skipped_excluded,
+                "skipped_malformed": skipped_malformed,
+                "exclude_patterns": patterns,
+                "total_in_manifest": _total_rows(conn),
+            },
+            indent=2,
+        )
+    )
 
 
 def _total_rows(conn) -> int:
@@ -425,13 +492,21 @@ def _read_only_urls(path: Path) -> set[str]:
 @_root_opt
 @_config_opt
 @click.option("--run-id", default=None, help="Reuse an existing run-id (else generate)")
-@click.option("--only-urls", "only_urls_path",
-              type=click.Path(exists=True, path_type=Path), default=None,
-              help="Scope the plan to URLs in this file (one per line; "
-                   "blanks + # comments skipped). Same semantics as "
-                   "`sift run --only-urls`.")
-def plan(root: Path, config_path: Optional[Path], run_id: Optional[str],
-         only_urls_path: Optional[Path]):
+@click.option(
+    "--only-urls",
+    "only_urls_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Scope the plan to URLs in this file (one per line; "
+    "blanks + # comments skipped). Same semantics as "
+    "`sift run --only-urls`.",
+)
+def plan(
+    root: Path,
+    config_path: Optional[Path],
+    run_id: Optional[str],
+    only_urls_path: Optional[Path],
+):
     """Phase 1: emit plan.jsonl with per-URL decisions."""
     cfg = _load_cli_config(config_path)
     conn = open_db(paths.manifest_path(root))
@@ -444,47 +519,87 @@ def plan(root: Path, config_path: Optional[Path], run_id: Optional[str],
         record_run_phase(conn, run_id, "plan")
     only_urls = _read_only_urls(only_urls_path) if only_urls_path else None
     counts = plan_phase(
-        conn, pp, now=now,
+        conn,
+        pp,
+        now=now,
         extractor_version=EXTRACTOR_VERSION,
         normalizer_version=NORMALIZER_VERSION,
         profile=sites_mod.current_profile(),
         cfg=cfg,
         only_urls=only_urls,
     )
-    click.echo(json.dumps({"run_id": run_id, "plan": str(pp), "counts": counts}, indent=2))
+    click.echo(
+        json.dumps({"run_id": run_id, "plan": str(pp), "counts": counts}, indent=2)
+    )
 
 
 @main.command()
 @_root_opt
 @_config_opt
 @click.option("--run-id", required=True)
-@click.option("--limit", type=int, default=None,
-              help="Stop after this many fetches (handy for smoke tests)")
-@click.option("--rate", type=float, default=None,
-              help="Requests per second per host (default: config crawl.rate_per_sec)")
-@click.option("--concurrency", type=int, default=None,
-              help="Concurrent in-flight requests (default: config crawl.concurrency)")
-@click.option("--decisions", multiple=True, default=("FETCH", "FETCH_CONDITIONAL"),
-              help="Only fetch URLs with these decisions")
-@click.option("--tier", "tiers", multiple=True, default=(),
-              help="Only fetch URLs in these tiers (repeat: --tier LIVING --tier NEWS). "
-                   "Default = no tier filter.")
-@click.option("--firecrawl-fallback", is_flag=True, default=False,
-              help="On 401/403 from the native fetcher, escalate that URL via "
-                   "Firecrawl /v2/scrape. Costs Firecrawl credits; capped per "
-                   "[crawl.firecrawl] max_credits_per_run. Requires "
-                   "FIRECRAWL_API_KEY env. Overrides config.")
-@click.option("--impersonate-fallback", is_flag=True, default=False,
-              help="Tier-2 escalation: on a fingerprint/bot-manager block "
-                   "(403/429/503), a TLS reset, or a thin 200, re-fetch with a "
-                   "real browser's TLS fingerprint via curl_cffi. Free and "
-                   "self-hosted (no API key); runs before any Firecrawl tier. "
-                   "Needs `pip install 'sift-engine[impersonate]'`. Overrides config.")
-def fetch(root: Path, config_path: Optional[Path], run_id: str,
-          limit: Optional[int], rate: Optional[float],
-          concurrency: Optional[int], decisions: tuple[str, ...],
-          tiers: tuple[str, ...], firecrawl_fallback: bool,
-          impersonate_fallback: bool):
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Stop after this many fetches (handy for smoke tests)",
+)
+@click.option(
+    "--rate",
+    type=float,
+    default=None,
+    help="Requests per second per host (default: config crawl.rate_per_sec)",
+)
+@click.option(
+    "--concurrency",
+    type=int,
+    default=None,
+    help="Concurrent in-flight requests (default: config crawl.concurrency)",
+)
+@click.option(
+    "--decisions",
+    multiple=True,
+    default=("FETCH", "FETCH_CONDITIONAL"),
+    help="Only fetch URLs with these decisions",
+)
+@click.option(
+    "--tier",
+    "tiers",
+    multiple=True,
+    default=(),
+    help="Only fetch URLs in these tiers (repeat: --tier LIVING --tier NEWS). "
+    "Default = no tier filter.",
+)
+@click.option(
+    "--firecrawl-fallback",
+    is_flag=True,
+    default=False,
+    help="On 401/403 from the native fetcher, escalate that URL via "
+    "Firecrawl /v2/scrape. Costs Firecrawl credits; capped per "
+    "[crawl.firecrawl] max_credits_per_run. Requires "
+    "FIRECRAWL_API_KEY env. Overrides config.",
+)
+@click.option(
+    "--impersonate-fallback",
+    is_flag=True,
+    default=False,
+    help="Tier-2 escalation: on a fingerprint/bot-manager block "
+    "(403/429/503), a TLS reset, or a thin 200, re-fetch with a "
+    "real browser's TLS fingerprint via curl_cffi. Free and "
+    "self-hosted (no API key); runs before any Firecrawl tier. "
+    "Needs `pip install 'sift-engine[impersonate]'`. Overrides config.",
+)
+def fetch(
+    root: Path,
+    config_path: Optional[Path],
+    run_id: str,
+    limit: Optional[int],
+    rate: Optional[float],
+    concurrency: Optional[int],
+    decisions: tuple[str, ...],
+    tiers: tuple[str, ...],
+    firecrawl_fallback: bool,
+    impersonate_fallback: bool,
+):
     """Phase 2: fetch URLs per plan.jsonl. Idempotent; resumes via fetch.log."""
     cfg = _load_cli_config(config_path)
     rate = rate if rate is not None else cfg.crawl.rate_per_sec
@@ -500,28 +615,32 @@ def fetch(root: Path, config_path: Optional[Path], run_id: str,
         if limit is not None:
             fetchable = fetchable[:limit]
         inputs = [
-            FetchInput(url=p.url, decision=p.decision, etag=p.etag, last_modified=p.last_modified)
+            FetchInput(
+                url=p.url,
+                decision=p.decision,
+                etag=p.etag,
+                last_modified=p.last_modified,
+            )
             for p in fetchable
         ]
         profile = sites_mod.current_profile()
-        needs_browser = cfg.browser.enabled and any(
-            profile.requires_browser(p.url) for p in fetchable
-        )
+        # Enabled → browser is the SPA-render path AND the tier-3 escalation
+        # fallback; gate on `enabled` (see run for the trade-off note).
+        needs_browser = cfg.browser.enabled
         if needs_browser:
-            # Deferred browser probe (see run): only hard-fail when a SPA URL
-            # is actually pending, so a fully-HTTP fetch isn't blocked by a
-            # missing optional dep.
             from .browser import check_browser_available
+
             check_browser_available()
         n_browser = sum(1 for p in fetchable if profile.requires_browser(p.url))
         click.echo(
             f"fetching {len(inputs)} URLs (rate={rate}/s, concurrency={concurrency}"
-            + (f", browser={n_browser}" if needs_browser else "")
+            + (f", browser={n_browser}" if n_browser else "")
             + ")"
         )
         fetch_log = paths.fetch_log_path(root, run_id)
 
         statuses: dict[int, int] = {}
+
         def on_result(r):
             statuses[r.status] = statuses.get(r.status, 0) + 1
 
@@ -536,11 +655,15 @@ def fetch(root: Path, config_path: Optional[Path], run_id: str,
             pool = None
             if needs_browser:
                 from .browser import BrowserPool
+
                 pool = BrowserPool(cfg.browser.concurrency, cfg.browser)
             try:
                 return await fetch_all(
-                    inputs, root, fetch_log,
-                    rate=rate, concurrency=concurrency,
+                    inputs,
+                    root,
+                    fetch_log,
+                    rate=rate,
+                    concurrency=concurrency,
                     on_result=on_result,
                     profile=profile,
                     browser_pool=pool,
@@ -559,8 +682,12 @@ def fetch(root: Path, config_path: Optional[Path], run_id: str,
                     await imp_pool.aclose()
 
         fetched = asyncio.run(_run())
-        out: dict = {"run_id": run_id, "new_fetches": fetched,
-                     "by_status": statuses, "fetch_log": str(fetch_log)}
+        out: dict = {
+            "run_id": run_id,
+            "new_fetches": fetched,
+            "by_status": statuses,
+            "fetch_log": str(fetch_log),
+        }
         if fc_pool is not None:
             out["firecrawl"] = {
                 "calls_attempted": fc_pool.calls_attempted,
@@ -587,6 +714,7 @@ def extract(root: Path, config_path: Optional[Path], run_id: str):
         fetches = []
         if fl.exists():
             from .fetch import FetchResult
+
             with fl.open() as f:
                 for line in f:
                     try:
@@ -594,11 +722,18 @@ def extract(root: Path, config_path: Optional[Path], run_id: str):
                     except Exception:
                         continue
         n = extract_all(
-            fetches, root=root, run_id=run_id, conn=conn,
-            crawler_version=CRAWLER_VERSION, extract_log=el,
+            fetches,
+            root=root,
+            run_id=run_id,
+            conn=conn,
+            crawler_version=CRAWLER_VERSION,
+            extract_log=el,
         )
-        click.echo(json.dumps({"run_id": run_id, "extracted": n,
-                               "extract_log": str(el)}, indent=2))
+        click.echo(
+            json.dumps(
+                {"run_id": run_id, "extracted": n, "extract_log": str(el)}, indent=2
+            )
+        )
 
 
 @main.command()
@@ -615,7 +750,8 @@ def commit(root: Path, config_path: Optional[Path], run_id: str):
             conn,
             paths.fetch_log_path(root, run_id),
             paths.extract_log_path(root, run_id),
-            root=root, run_id=run_id,
+            root=root,
+            run_id=run_id,
         )
         click.echo(json.dumps({"run_id": run_id, "commit": counts}, indent=2))
 
@@ -623,8 +759,11 @@ def commit(root: Path, config_path: Optional[Path], run_id: str):
 @main.command("purge")
 @_root_opt
 @_config_opt
-@click.option("--dry-run", is_flag=True,
-              help="Show what would be purged without deleting anything.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be purged without deleting anything.",
+)
 def purge_cmd(root: Path, config_path: Optional[Path], dry_run: bool):
     """Drop manifest rows whose plan decision is TOMBSTONE_PURGE.
 
@@ -643,10 +782,13 @@ def purge_cmd(root: Path, config_path: Optional[Path], dry_run: bool):
 
     # Generate a plan into a throwaway path
     import tempfile
+
     with tempfile.TemporaryDirectory() as td:
         pp = Path(td) / "plan.jsonl"
         plan_counts = plan_phase(
-            conn, pp, now=now,
+            conn,
+            pp,
+            now=now,
             extractor_version=EXTRACTOR_VERSION,
             normalizer_version=NORMALIZER_VERSION,
             profile=profile,
@@ -656,39 +798,68 @@ def purge_cmd(root: Path, config_path: Optional[Path], dry_run: bool):
 
     candidates = [e for e in entries if e.decision == PURGE_DECISION]
     if dry_run:
-        click.echo(json.dumps({
-            "dry_run": True,
-            "candidates": len(candidates),
-            "sample_urls": [e.url for e in candidates[:10]],
-            "plan_counts": plan_counts,
-        }, indent=2, default=str))
+        click.echo(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "candidates": len(candidates),
+                    "sample_urls": [e.url for e in candidates[:10]],
+                    "plan_counts": plan_counts,
+                },
+                indent=2,
+                default=str,
+            )
+        )
         return
 
     with transaction(conn):
         result = purge_tombstones(conn, entries)
-    click.echo(json.dumps({
-        "purged": result["purged"],
-        "candidates": result["candidates"],
-        "plan_counts": plan_counts,
-    }, indent=2, default=str))
+    click.echo(
+        json.dumps(
+            {
+                "purged": result["purged"],
+                "candidates": result["candidates"],
+                "plan_counts": plan_counts,
+            },
+            indent=2,
+            default=str,
+        )
+    )
 
 
 @main.command("re-extract")
 @_root_opt
 @_config_opt
-@click.option("--run-id", default=None,
-              help="Run id for the re-extract artifacts (default: new timestamp + '-reextract')")
-@click.option("--tier", "tiers", multiple=True, default=(),
-              help="Restrict to these tiers (repeatable)")
-@click.option("--include-frozen", is_flag=True,
-              help="Also re-extract FROZEN rows (default: FRESH only). Use after a "
-                   "FROZEN-tier first-fetch when you want to refresh historical extracts.")
-@click.option("--publish/--no-publish", default=True,
-              help="Run publish (consolidate + gates + symlink swap) after commit. "
-                   "Default true.")
+@click.option(
+    "--run-id",
+    default=None,
+    help="Run id for the re-extract artifacts (default: new timestamp + '-reextract')",
+)
+@click.option(
+    "--tier",
+    "tiers",
+    multiple=True,
+    default=(),
+    help="Restrict to these tiers (repeatable)",
+)
+@click.option(
+    "--include-frozen",
+    is_flag=True,
+    help="Also re-extract FROZEN rows (default: FRESH only). Use after a "
+    "FROZEN-tier first-fetch when you want to refresh historical extracts.",
+)
+@click.option(
+    "--publish/--no-publish",
+    default=True,
+    help="Run publish (consolidate + gates + symlink swap) after commit. Default true.",
+)
 def re_extract_cmd(
-    root: Path, config_path: Optional[Path], run_id: Optional[str],
-    tiers: tuple[str, ...], include_frozen: bool, publish: bool,
+    root: Path,
+    config_path: Optional[Path],
+    run_id: Optional[str],
+    tiers: tuple[str, ...],
+    include_frozen: bool,
+    publish: bool,
 ):
     """Re-extract every eligible row from its cached raw blob (no network).
 
@@ -726,8 +897,12 @@ def re_extract_cmd(
 
         t0 = _time.perf_counter()
         fl, el, n_processed = re_extract_corpus(
-            root, run_id=run_id, conn=conn, crawler_version=CRAWLER_VERSION,
-            fresh_only=fresh_only, tiers=tier_filter,
+            root,
+            run_id=run_id,
+            conn=conn,
+            crawler_version=CRAWLER_VERSION,
+            fresh_only=fresh_only,
+            tiers=tier_filter,
         )
         extract_dt = round(_time.perf_counter() - t0, 2)
         click.echo(f"processed {n_processed} rows in {extract_dt}s")
@@ -738,10 +913,18 @@ def re_extract_cmd(
         click.echo(f"commit: {json.dumps(counts)}")
 
         if not publish:
-            click.echo(json.dumps({
-                "run_id": run_id, "extracted": n_processed,
-                "commit": counts, "published": False, "extract_sec": extract_dt,
-            }, indent=2))
+            click.echo(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "extracted": n_processed,
+                        "commit": counts,
+                        "published": False,
+                        "extract_sec": extract_dt,
+                    },
+                    indent=2,
+                )
+            )
             return
 
         # Publish — consolidate + 6 gates + symlink swap
@@ -749,25 +932,38 @@ def re_extract_cmd(
         build_artifacts(conn, root, run_id)
         expected = conn.execute("SELECT COUNT(*) FROM manifest").fetchone()[0]
         ok, gates, snap = publish_phase(
-            conn, root, run_id, started_at=now_utc(), expected_urls=expected,
+            conn,
+            root,
+            run_id,
+            started_at=now_utc(),
+            expected_urls=expected,
         )
         state_counts = counts_by_state(conn)
         with transaction(conn):
             record_run_end(
-                conn, run_id, now_utc(),
+                conn,
+                run_id,
+                now_utc(),
                 status="succeeded" if ok else "degraded",
                 counts_json=json.dumps(state_counts),
             )
-        click.echo(json.dumps({
-            "run_id": run_id,
-            "extract_sec": extract_dt,
-            "processed": n_processed,
-            "commit": counts,
-            "published": ok,
-            "snapshot": str(snap),
-            "gates": [{"name": n, "passed": p, "detail": d} for (n, p, d) in gates],
-            "counts_by_state": state_counts,
-        }, indent=2))
+        click.echo(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "extract_sec": extract_dt,
+                    "processed": n_processed,
+                    "commit": counts,
+                    "published": ok,
+                    "snapshot": str(snap),
+                    "gates": [
+                        {"name": n, "passed": p, "detail": d} for (n, p, d) in gates
+                    ],
+                    "counts_by_state": state_counts,
+                },
+                indent=2,
+            )
+        )
         if not ok:
             sys.exit(2)
 
@@ -776,8 +972,11 @@ def re_extract_cmd(
 @_root_opt
 @_config_opt
 @click.option("--run-id", required=True)
-@click.option("--skip-artifacts", is_flag=True,
-              help="Skip llms.txt / by_guide rollup (faster smoke tests)")
+@click.option(
+    "--skip-artifacts",
+    is_flag=True,
+    help="Skip llms.txt / by_guide rollup (faster smoke tests)",
+)
 def publish(root: Path, config_path: Optional[Path], run_id: str, skip_artifacts: bool):
     """Phase 5: verify 5 gates, build artifacts, flip current symlink."""
     _load_cli_config(config_path)
@@ -789,12 +988,18 @@ def publish(root: Path, config_path: Optional[Path], run_id: str, skip_artifacts
         expected = _total_rows(conn)
         started = now_utc()
         ok, gates, snap = publish_phase(
-            conn, root, run_id, started_at=started, expected_urls=expected,
+            conn,
+            root,
+            run_id,
+            started_at=started,
+            expected_urls=expected,
         )
         counts = counts_by_state(conn)
         with transaction(conn):
             record_run_end(
-                conn, run_id, now_utc(),
+                conn,
+                run_id,
+                now_utc(),
                 status="succeeded" if ok else "degraded",
                 counts_json=json.dumps(counts),
             )
@@ -813,49 +1018,93 @@ def publish(root: Path, config_path: Optional[Path], run_id: str, skip_artifacts
 @main.command()
 @_root_opt
 @_config_opt
-@click.option("--limit", type=int, default=None,
-              help="Cap fetches in this run (useful for first-time smoke runs)")
-@click.option("--rate", type=float, default=None,
-              help="Requests per second per host (default: config crawl.rate_per_sec)")
-@click.option("--concurrency", type=int, default=None,
-              help="Concurrent in-flight requests (default: config crawl.concurrency)")
-@click.option("--tier", "tiers", multiple=True, default=(),
-              help="Only fetch URLs in these tiers (repeat: --tier LIVING --tier NEWS).")
-@click.option("--coverage-base", type=str, default=None,
-              help="For publish G3 coverage: base the terminal-state fraction on something other than total "
-                   "manifest rows. 'filtered-tiers' = count of --tier rows (tier-filtered runs); "
-                   "'planned' = min(--limit, total) so an intentional capped/partial crawl against a large "
-                   "seed doesn't spuriously degrade.")
-@click.option("--run-id", "run_id_opt", type=str, default=None,
-              help="Use this run_id instead of a generated timestamp. Must be unique "
-                   "(it's the runs-table primary key). Lets a caller mint the id up front "
-                   "and correlate to the run — used by sift-mcp's index_url tool.")
-@click.option("--firecrawl-fallback", is_flag=True, default=False,
-              help="On 401/403 from the native fetcher, escalate that URL via "
-                   "Firecrawl /v2/scrape. Costs Firecrawl credits; capped per "
-                   "[crawl.firecrawl] max_credits_per_run. Requires "
-                   "FIRECRAWL_API_KEY env. Overrides config.")
-@click.option("--impersonate-fallback", is_flag=True, default=False,
-              help="Tier-2 escalation: on a fingerprint/bot-manager block "
-                   "(403/429/503), a TLS reset, or a thin 200, re-fetch with a "
-                   "real browser's TLS fingerprint via curl_cffi. Free and "
-                   "self-hosted (no API key); runs before any Firecrawl tier. "
-                   "Needs `pip install 'sift-engine[impersonate]'`. Overrides config.")
-@click.option("--only-urls", "only_urls_path",
-              type=click.Path(exists=True, path_type=Path), default=None,
-              help="Scope the plan to URLs listed in this file (one URL per "
-                   "line; blank + #-comment lines skipped). Rows outside the "
-                   "set are SKIPPED entirely — not planned, not fetched. Use "
-                   "for targeted backfills triggered by sift-mcp's index_url "
-                   "tool so adding a single URL doesn't trigger a full-corpus "
-                   "expansion.")
-def run(root: Path, config_path: Optional[Path],
-        limit: Optional[int], rate: Optional[float],
-        concurrency: Optional[int],
-        tiers: tuple[str, ...], coverage_base: Optional[str],
-        run_id_opt: Optional[str], firecrawl_fallback: bool,
-        impersonate_fallback: bool,
-        only_urls_path: Optional[Path]):
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Cap fetches in this run (useful for first-time smoke runs)",
+)
+@click.option(
+    "--rate",
+    type=float,
+    default=None,
+    help="Requests per second per host (default: config crawl.rate_per_sec)",
+)
+@click.option(
+    "--concurrency",
+    type=int,
+    default=None,
+    help="Concurrent in-flight requests (default: config crawl.concurrency)",
+)
+@click.option(
+    "--tier",
+    "tiers",
+    multiple=True,
+    default=(),
+    help="Only fetch URLs in these tiers (repeat: --tier LIVING --tier NEWS).",
+)
+@click.option(
+    "--coverage-base",
+    type=str,
+    default=None,
+    help="For publish G3 coverage: base the terminal-state fraction on something other than total "
+    "manifest rows. 'filtered-tiers' = count of --tier rows (tier-filtered runs); "
+    "'planned' = min(--limit, total) so an intentional capped/partial crawl against a large "
+    "seed doesn't spuriously degrade.",
+)
+@click.option(
+    "--run-id",
+    "run_id_opt",
+    type=str,
+    default=None,
+    help="Use this run_id instead of a generated timestamp. Must be unique "
+    "(it's the runs-table primary key). Lets a caller mint the id up front "
+    "and correlate to the run — used by sift-mcp's index_url tool.",
+)
+@click.option(
+    "--firecrawl-fallback",
+    is_flag=True,
+    default=False,
+    help="On 401/403 from the native fetcher, escalate that URL via "
+    "Firecrawl /v2/scrape. Costs Firecrawl credits; capped per "
+    "[crawl.firecrawl] max_credits_per_run. Requires "
+    "FIRECRAWL_API_KEY env. Overrides config.",
+)
+@click.option(
+    "--impersonate-fallback",
+    is_flag=True,
+    default=False,
+    help="Tier-2 escalation: on a fingerprint/bot-manager block "
+    "(403/429/503), a TLS reset, or a thin 200, re-fetch with a "
+    "real browser's TLS fingerprint via curl_cffi. Free and "
+    "self-hosted (no API key); runs before any Firecrawl tier. "
+    "Needs `pip install 'sift-engine[impersonate]'`. Overrides config.",
+)
+@click.option(
+    "--only-urls",
+    "only_urls_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Scope the plan to URLs listed in this file (one URL per "
+    "line; blank + #-comment lines skipped). Rows outside the "
+    "set are SKIPPED entirely — not planned, not fetched. Use "
+    "for targeted backfills triggered by sift-mcp's index_url "
+    "tool so adding a single URL doesn't trigger a full-corpus "
+    "expansion.",
+)
+def run(
+    root: Path,
+    config_path: Optional[Path],
+    limit: Optional[int],
+    rate: Optional[float],
+    concurrency: Optional[int],
+    tiers: tuple[str, ...],
+    coverage_base: Optional[str],
+    run_id_opt: Optional[str],
+    firecrawl_fallback: bool,
+    impersonate_fallback: bool,
+    only_urls_path: Optional[Path],
+):
     """Run plan -> fetch -> extract -> commit -> publish end-to-end with per-phase timing.
 
     Exit codes (operationally meaningful for cron / CI wrappers):
@@ -869,6 +1118,7 @@ def run(root: Path, config_path: Optional[Path],
     rate = rate if rate is not None else cfg.crawl.rate_per_sec
     concurrency = concurrency if concurrency is not None else cfg.crawl.concurrency
     import time as _time
+
     timings: dict[str, float] = {}
 
     def _phase(name: str):
@@ -899,10 +1149,14 @@ def run(root: Path, config_path: Optional[Path],
         only_urls: Optional[set[str]] = None
         if only_urls_path is not None:
             only_urls = _read_only_urls(only_urls_path)
-            click.echo(f"plan-scope: --only-urls limits to {len(only_urls)} URL(s) "
-                       f"from {only_urls_path}")
+            click.echo(
+                f"plan-scope: --only-urls limits to {len(only_urls)} URL(s) "
+                f"from {only_urls_path}"
+            )
         plan_counts = plan_phase(
-            conn, pp, now=now,
+            conn,
+            pp,
+            now=now,
             extractor_version=EXTRACTOR_VERSION,
             normalizer_version=NORMALIZER_VERSION,
             profile=profile,
@@ -914,30 +1168,41 @@ def run(root: Path, config_path: Optional[Path],
 
         # FETCH
         plan_entries = load_plan(pp)
-        fetchable = [p for p in plan_entries if p.decision in ("FETCH", "FETCH_CONDITIONAL")]
+        fetchable = [
+            p for p in plan_entries if p.decision in ("FETCH", "FETCH_CONDITIONAL")
+        ]
         if tiers:
             tier_set = set(tiers)
             fetchable = [p for p in fetchable if p.tier in tier_set]
         if limit is not None:
             fetchable = fetchable[:limit]
         inputs = [
-            FetchInput(url=p.url, decision=p.decision, etag=p.etag, last_modified=p.last_modified)
+            FetchInput(
+                url=p.url,
+                decision=p.decision,
+                etag=p.etag,
+                last_modified=p.last_modified,
+            )
             for p in fetchable
         ]
-        click.echo(f"fetch input: {len(inputs)} URLs"
-                   + (f" (tier filter: {sorted(tiers)})" if tiers else ""))
+        click.echo(
+            f"fetch input: {len(inputs)} URLs"
+            + (f" (tier filter: {sorted(tiers)})" if tiers else "")
+        )
         record_run_phase(conn, run_id, "fetch")
         fl = paths.fetch_log_path(root, run_id)
         ph = _phase("fetch")
-        needs_browser_run = cfg.browser.enabled and any(
-            profile.requires_browser(p.url) for p in fetchable
-        )
+        # Browser enabled → it's both the SPA-render path AND the tier-3 escalation
+        # fallback (httpx → curl_cffi → browser → Firecrawl), so gate on `enabled`
+        # rather than on whether a SPA URL is pending. Trade-off: a browser-enabled
+        # run pays the one-time Playwright startup even if nothing escalates; a lazy
+        # pool factory is a documented follow-up.
+        needs_browser_run = cfg.browser.enabled
         if needs_browser_run:
-            # Probe only when a SPA URL is actually pending — a missing
-            # Playwright then hard-fails this run with a clear install hint
-            # (and the guard records a terminal 'failed'). A run with no SPA
-            # URL never reaches here, so a mostly-HTTP corpus is unaffected.
+            # Probe up front so a missing Playwright hard-fails with a clear
+            # install hint (the guard records a terminal 'failed').
             from .browser import check_browser_available
+
             check_browser_available()
         fc_pool = _build_firecrawl_pool(cfg, firecrawl_fallback)
         imp_pool = _build_impersonate_pool(cfg, impersonate_fallback)
@@ -949,11 +1214,15 @@ def run(root: Path, config_path: Optional[Path],
             pool = None
             if needs_browser_run:
                 from .browser import BrowserPool
+
                 pool = BrowserPool(cfg.browser.concurrency, cfg.browser)
             try:
                 return await fetch_all(
-                    inputs, root, fl,
-                    rate=rate, concurrency=concurrency,
+                    inputs,
+                    root,
+                    fl,
+                    rate=rate,
+                    concurrency=concurrency,
                     profile=profile,
                     browser_pool=pool,
                     user_agent=cfg.crawl.user_agent,
@@ -977,6 +1246,7 @@ def run(root: Path, config_path: Optional[Path],
         # EXTRACT
         record_run_phase(conn, run_id, "extract")
         from .fetch import FetchResult
+
         fetches = []
         if fl.exists():
             with fl.open() as f:
@@ -988,8 +1258,12 @@ def run(root: Path, config_path: Optional[Path],
         el = paths.extract_log_path(root, run_id)
         ph = _phase("extract")
         n_extr = extract_all(
-            fetches, root=root, run_id=run_id, conn=conn,
-            crawler_version=CRAWLER_VERSION, extract_log=el,
+            fetches,
+            root=root,
+            run_id=run_id,
+            conn=conn,
+            crawler_version=CRAWLER_VERSION,
+            extract_log=el,
         )
         click.echo(f"extracted: {n_extr}")
         _end(ph)
@@ -1007,6 +1281,7 @@ def run(root: Path, config_path: Optional[Path],
         record_run_phase(conn, run_id, "purge")
         ph = _phase("purge")
         from .purge import purge_tombstones
+
         with transaction(conn):
             purge_counts = purge_tombstones(conn, plan_entries)
         if purge_counts["candidates"] > 0:
@@ -1036,12 +1311,18 @@ def run(root: Path, config_path: Optional[Path],
         else:
             expected = _total_rows(conn)
         ok, gates, snap = publish_phase(
-            conn, root, run_id, started_at=now_utc(), expected_urls=expected,
+            conn,
+            root,
+            run_id,
+            started_at=now_utc(),
+            expected_urls=expected,
         )
         state_counts = counts_by_state(conn)
         with transaction(conn):
             record_run_end(
-                conn, run_id, now_utc(),
+                conn,
+                run_id,
+                now_utc(),
                 status="succeeded" if ok else "degraded",
                 counts_json=json.dumps(state_counts),
             )
@@ -1080,11 +1361,20 @@ def run(root: Path, config_path: Optional[Path],
 
 @main.command("backup")
 @_root_opt
-@click.option("--to", "dest_path", type=click.Path(path_type=Path), default=None,
-              help="Destination. Default: <root>/backups/manifest-<UTC>.db")
-@click.option("--keep", type=int, default=None,
-              help="After backup, keep only the N most recent backup files in "
-                   "<root>/backups/ (rotate older ones). Default: keep all.")
+@click.option(
+    "--to",
+    "dest_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Destination. Default: <root>/backups/manifest-<UTC>.db",
+)
+@click.option(
+    "--keep",
+    type=int,
+    default=None,
+    help="After backup, keep only the N most recent backup files in "
+    "<root>/backups/ (rotate older ones). Default: keep all.",
+)
 def backup_cmd(root: Path, dest_path: Optional[Path], keep: Optional[int]):
     """Online SQLite backup of manifest.db to a separate path.
 
@@ -1165,29 +1455,45 @@ def backup_cmd(root: Path, dest_path: Optional[Path], keep: Optional[int]):
 def verify_backup_cmd(root: Path, backup_path: Path):
     """Verify a backup is a valid, complete SQLite file with the manifest schema."""
     import sqlite3 as _sqlite3
+
     try:
         conn = _sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
         # Integrity check (SQLite-internal pages + b-tree consistency)
         result = conn.execute("PRAGMA integrity_check").fetchone()
         if result[0] != "ok":
-            click.echo(json.dumps({"ok": False, "reason": f"integrity_check: {result[0]}"}, indent=2))
+            click.echo(
+                json.dumps(
+                    {"ok": False, "reason": f"integrity_check: {result[0]}"}, indent=2
+                )
+            )
             sys.exit(2)
         # Schema sanity — confirm the manifest table is present + has rows
-        tables = {r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )}
+        tables = {
+            r[0]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
         missing = {"manifest", "runs"} - tables
         if missing:
-            click.echo(json.dumps({"ok": False, "reason": f"missing tables: {sorted(missing)}"}, indent=2))
+            click.echo(
+                json.dumps(
+                    {"ok": False, "reason": f"missing tables: {sorted(missing)}"},
+                    indent=2,
+                )
+            )
             sys.exit(2)
         rows = conn.execute("SELECT COUNT(*) FROM manifest").fetchone()[0]
         conn.close()
-        click.echo(json.dumps({
-            "ok": True,
-            "backup": str(backup_path),
-            "tables": sorted(tables),
-            "manifest_rows": rows,
-        }, indent=2))
+        click.echo(
+            json.dumps(
+                {
+                    "ok": True,
+                    "backup": str(backup_path),
+                    "tables": sorted(tables),
+                    "manifest_rows": rows,
+                },
+                indent=2,
+            )
+        )
     except _sqlite3.DatabaseError as e:
         click.echo(json.dumps({"ok": False, "reason": f"sqlite error: {e}"}, indent=2))
         sys.exit(2)
@@ -1215,24 +1521,47 @@ def verify_snapshot_cmd(root: Path, config_path: Optional[Path], run_id: Optiona
     try:
         snap = json.loads(snap_path.read_text())
     except (OSError, ValueError) as e:
-        click.echo(json.dumps({"ok": False, "reason": f"snapshot.json unreadable: {e}"}, indent=2))
+        click.echo(
+            json.dumps(
+                {"ok": False, "reason": f"snapshot.json unreadable: {e}"}, indent=2
+            )
+        )
         sys.exit(2)
     stored = (snap.get("integrity") or {}).get("merkle_root")
     if not stored:
-        click.echo(json.dumps({"ok": False, "reason": "snapshot has no merkle_root (pre-integrity-v1 snapshot)"}, indent=2))
+        click.echo(
+            json.dumps(
+                {
+                    "ok": False,
+                    "reason": "snapshot has no merkle_root (pre-integrity-v1 snapshot)",
+                },
+                indent=2,
+            )
+        )
         sys.exit(2)
     conn = open_db(paths.manifest_path(root))
     from .manifest import iter_all as _iter_all
-    rows = [(r.url, r.content_hash) for r in _iter_all(conn)
-            if r.state in ("FRESH", "FROZEN") and r.content_hash]
+
+    rows = [
+        (r.url, r.content_hash)
+        for r in _iter_all(conn)
+        if r.state in ("FRESH", "FROZEN") and r.content_hash
+    ]
     recomputed, leaf_count = integrity_mod.compute_corpus_root(rows)
     ok = recomputed == stored
-    click.echo(json.dumps({
-        "ok": ok, "run_id": run_id,
-        "stored_root": stored, "recomputed_root": recomputed,
-        "leaf_count_stored": (snap.get("integrity") or {}).get("leaf_count"),
-        "leaf_count_recomputed": leaf_count,
-    }, indent=2))
+    click.echo(
+        json.dumps(
+            {
+                "ok": ok,
+                "run_id": run_id,
+                "stored_root": stored,
+                "recomputed_root": recomputed,
+                "leaf_count_stored": (snap.get("integrity") or {}).get("leaf_count"),
+                "leaf_count_recomputed": leaf_count,
+            },
+            indent=2,
+        )
+    )
     if not ok:
         sys.exit(2)
 
@@ -1248,7 +1577,11 @@ def verify_changelog_cmd(root: Path, config_path: Optional[Path]):
     _load_cli_config(config_path)
     cl = paths.changelog_path(root)
     if not cl.exists():
-        click.echo(json.dumps({"ok": True, "entries": 0, "reason": "no changelog yet"}, indent=2))
+        click.echo(
+            json.dumps(
+                {"ok": True, "entries": 0, "reason": "no changelog yet"}, indent=2
+            )
+        )
         return
     entries = []
     with cl.open() as f:
@@ -1259,7 +1592,9 @@ def verify_changelog_cmd(root: Path, config_path: Optional[Path]):
             try:
                 entries.append(json.loads(line))
             except json.JSONDecodeError as e:
-                click.echo(json.dumps({"ok": False, "reason": f"parse error: {e}"}, indent=2))
+                click.echo(
+                    json.dumps({"ok": False, "reason": f"parse error: {e}"}, indent=2)
+                )
                 sys.exit(2)
     ok, bad_idx, reason = integrity_mod.verify_chain(entries)
     out = {"ok": ok, "entries": len(entries)}
@@ -1275,9 +1610,12 @@ def verify_changelog_cmd(root: Path, config_path: Optional[Path]):
 @_root_opt
 @_config_opt
 @click.option("--run-id", default=None)
-def verify_signature_cmd(root: Path, config_path: Optional[Path], run_id: Optional[str]):
+def verify_signature_cmd(
+    root: Path, config_path: Optional[Path], run_id: Optional[str]
+):
     """Verify the GPG detach-signature on snapshot.json (if signing is enabled)."""
     import subprocess
+
     _load_cli_config(config_path)
     if not run_id:
         cur = paths.current_symlink(root)
@@ -1287,19 +1625,42 @@ def verify_signature_cmd(root: Path, config_path: Optional[Path], run_id: Option
     snap = paths.snapshot_path(root, run_id)
     sig = snap.with_suffix(snap.suffix + ".sig")
     if not sig.exists():
-        click.echo(json.dumps({"ok": False, "reason": "no .sig file (signing not configured?)"}, indent=2))
+        click.echo(
+            json.dumps(
+                {"ok": False, "reason": "no .sig file (signing not configured?)"},
+                indent=2,
+            )
+        )
         sys.exit(2)
     try:
         result = subprocess.run(
             ["gpg", "--verify", str(sig), str(snap)],
-            check=True, capture_output=True, timeout=30,
+            check=True,
+            capture_output=True,
+            timeout=30,
         )
-        click.echo(json.dumps({"ok": True, "snapshot": str(snap),
-                               "signature": str(sig),
-                               "gpg_output": result.stderr.decode()}, indent=2))
+        click.echo(
+            json.dumps(
+                {
+                    "ok": True,
+                    "snapshot": str(snap),
+                    "signature": str(sig),
+                    "gpg_output": result.stderr.decode(),
+                },
+                indent=2,
+            )
+        )
     except subprocess.CalledProcessError as e:
-        click.echo(json.dumps({"ok": False, "reason": "gpg verify failed",
-                               "gpg_output": e.stderr.decode()}, indent=2))
+        click.echo(
+            json.dumps(
+                {
+                    "ok": False,
+                    "reason": "gpg verify failed",
+                    "gpg_output": e.stderr.decode(),
+                },
+                indent=2,
+            )
+        )
         sys.exit(2)
     except FileNotFoundError:
         click.echo(json.dumps({"ok": False, "reason": "gpg not installed"}, indent=2))
@@ -1310,10 +1671,14 @@ def verify_signature_cmd(root: Path, config_path: Optional[Path], run_id: Option
 @_root_opt
 @_config_opt
 @click.option("--run-id", default=None)
-@click.option("--skip-signature", is_flag=True,
-              help="Skip GPG signature check (e.g. when not signing)")
-def verify_all_cmd(root: Path, config_path: Optional[Path], run_id: Optional[str],
-                   skip_signature: bool):
+@click.option(
+    "--skip-signature",
+    is_flag=True,
+    help="Skip GPG signature check (e.g. when not signing)",
+)
+def verify_all_cmd(
+    root: Path, config_path: Optional[Path], run_id: Optional[str], skip_signature: bool
+):
     """Run all integrity verifications: Merkle root + changelog chain + (optional) GPG.
 
     Exit 0 iff every check passes. Exit 2 on any failure with diagnostics."""
@@ -1338,8 +1703,12 @@ def verify_all_cmd(root: Path, config_path: Optional[Path], run_id: Optional[str
             if stored:
                 conn = open_db(paths.manifest_path(root))
                 from .manifest import iter_all as _iter_all
-                rows = [(r.url, r.content_hash) for r in _iter_all(conn)
-                        if r.state in ("FRESH", "FROZEN") and r.content_hash]
+
+                rows = [
+                    (r.url, r.content_hash)
+                    for r in _iter_all(conn)
+                    if r.state in ("FRESH", "FROZEN") and r.content_hash
+                ]
                 recomputed, _ = integrity_mod.compute_corpus_root(rows)
                 ok = recomputed == stored
                 results["merkle_root"] = {
@@ -1349,13 +1718,22 @@ def verify_all_cmd(root: Path, config_path: Optional[Path], run_id: Optional[str
                 }
                 all_ok = all_ok and ok
             else:
-                results["merkle_root"] = {"ok": False, "reason": "snapshot has no merkle_root"}
+                results["merkle_root"] = {
+                    "ok": False,
+                    "reason": "snapshot has no merkle_root",
+                }
                 all_ok = False
         else:
-            results["merkle_root"] = {"ok": False, "reason": f"no snapshot.json for run {run_id}"}
+            results["merkle_root"] = {
+                "ok": False,
+                "reason": f"no snapshot.json for run {run_id}",
+            }
             all_ok = False
     else:
-        results["merkle_root"] = {"ok": False, "reason": "no --run-id and no current/ symlink"}
+        results["merkle_root"] = {
+            "ok": False,
+            "reason": "no --run-id and no current/ symlink",
+        }
         all_ok = False
 
     # Changelog
@@ -1365,7 +1743,11 @@ def verify_all_cmd(root: Path, config_path: Optional[Path], run_id: Optional[str
             with cl.open() as f:
                 entries = [json.loads(line) for line in f if line.strip()]
         except (OSError, json.JSONDecodeError) as e:
-            results["changelog"] = {"ok": False, "entries": 0, "reason": f"malformed changelog: {e}"}
+            results["changelog"] = {
+                "ok": False,
+                "entries": 0,
+                "reason": f"malformed changelog: {e}",
+            }
             all_ok = False
         else:
             chain_ok, bad_idx, reason = integrity_mod.verify_chain(entries)
@@ -1380,18 +1762,26 @@ def verify_all_cmd(root: Path, config_path: Optional[Path], run_id: Optional[str
     # Signature (optional)
     if not skip_signature and run_id:
         import subprocess
+
         snap = paths.snapshot_path(root, run_id)
         sig = snap.with_suffix(snap.suffix + ".sig")
         if sig.exists():
             try:
-                subprocess.run(["gpg", "--verify", str(sig), str(snap)],
-                               check=True, capture_output=True, timeout=30)
+                subprocess.run(
+                    ["gpg", "--verify", str(sig), str(snap)],
+                    check=True,
+                    capture_output=True,
+                    timeout=30,
+                )
                 results["signature"] = {"ok": True}
             except subprocess.CalledProcessError as e:
                 results["signature"] = {"ok": False, "reason": e.stderr.decode()[:200]}
                 all_ok = False
             except FileNotFoundError:
-                results["signature"] = {"ok": True, "reason": "gpg not installed; skipping"}
+                results["signature"] = {
+                    "ok": True,
+                    "reason": "gpg not installed; skipping",
+                }
         else:
             results["signature"] = {"ok": True, "reason": "no .sig (signing disabled)"}
 
@@ -1432,6 +1822,7 @@ def manifest_query(root: Path, sql: str, fmt: str):
 def status(root: Path):
     """Show counts and the currently-published run."""
     from .status import compute_status_summary
+
     click.echo(json.dumps(compute_status_summary(root), indent=2, default=str))
 
 
