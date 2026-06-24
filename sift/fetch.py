@@ -213,6 +213,7 @@ async def _one_request(
             and host is not None
             and memo.should_skip_native(host)
         ):
+            memo.record_skip()
             return HOST_FLOORED, None, None  # skip the doomed request entirely
         async with limiter:
             try:
@@ -254,9 +255,16 @@ class HostTierMemo:
         self._threshold = threshold
         self._blocks: dict[str, int] = {}
         self._floored: set[str] = set()
+        self._skipped = 0  # native round-trips skipped (surfaced in the run summary)
 
     def should_skip_native(self, host: str) -> bool:
         return host in self._floored
+
+    def record_skip(self) -> None:
+        """Count one native request skipped because its host was floored. Pure
+        telemetry — surfaced in the run summary so an operator can see the floor's
+        effect (and spot a host that was floored but shouldn't have been)."""
+        self._skipped += 1
 
     def record_block(self, host: str) -> None:
         if self._threshold <= 0 or host in self._floored:
@@ -275,6 +283,11 @@ class HostTierMemo:
     @property
     def floored_hosts(self) -> frozenset[str]:
         return frozenset(self._floored)
+
+    @property
+    def skipped(self) -> int:
+        """Number of native round-trips skipped because their host was floored."""
+        return self._skipped
 
 
 def _escalate_status_set(
@@ -663,6 +676,7 @@ async def fetch_all(
     firecrawl_pool: Optional["FirecrawlScrapePool"] = None,
     impersonate_pool: Optional["CurlCffiScrapePool"] = None,
     thin_text_threshold: int = 0,
+    memo: Optional["HostTierMemo"] = None,
     allowed_hosts: Optional[frozenset[str]] = None,
 ) -> int:
     """Fetch all inputs honoring rate limit. Appends each result to fetch_log
@@ -683,12 +697,11 @@ async def fetch_all(
 
     # One adaptive per-host memo for the whole run, only when a FREE escalation
     # tier exists (never skip native onto a paid-only tier). Shared across all
-    # fetch_one tasks so a host blocked early speeds up its later URLs.
-    memo = (
-        HostTierMemo()
-        if (impersonate_pool is not None or browser_pool is not None)
-        else None
-    )
+    # fetch_one tasks so a host blocked early speeds up its later URLs. The CLI
+    # passes its own (built with the configured threshold) so it can read the
+    # floor's stats for the run summary; direct callers get a default-threshold one.
+    if memo is None and (impersonate_pool is not None or browser_pool is not None):
+        memo = HostTierMemo()
 
     # Split by transport. Browser-required URLs sidestep the per-host rate
     # limiter — they're already much slower (5-10s each) so the cost driver

@@ -24,6 +24,11 @@ retries      = 3          # per-URL transient-error retries within one run
 # user_agent = "my-crawler/1.0 (+contact)"   # unset => sift's identifying UA
 thin_text_threshold = 500 # a 2xx with fewer visible chars (empty SPA shell / JS
                           # challenge) escalates up the ladder; 0 disables the trigger
+host_block_floor = 3      # after N native blocks, a host's later URLs skip the
+                          # native round-trip (+ its 429/503 backoff) and start at
+                          # the escalation ladder; 0 disables. `sift run` reports the
+                          # effect under run_summary["adaptive_floor"]={floored_hosts,
+                          # native_skipped}.
 
 # ---- Tier-2 escalation: curl_cffi TLS impersonation (free, self-hosted) -----
 # Defeats most Cloudflare/Akamai/Imperva fingerprint blocks with no browser.

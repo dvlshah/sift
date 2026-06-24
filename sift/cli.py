@@ -54,7 +54,7 @@ from .classify import (
 from .commit import commit as commit_phase
 from .config import IndexConfig, load_config
 from .extract import EXTRACTOR_VERSION, extract_all
-from .fetch import FetchInput, fetch_all
+from .fetch import FetchInput, HostTierMemo, fetch_all
 from .manifest import (
     counts_by_state,
     init_schema,
@@ -674,6 +674,14 @@ def fetch(
 
         fc_pool = _build_firecrawl_pool(cfg, firecrawl_fallback)
         imp_pool = _build_impersonate_pool(cfg, impersonate_fallback)
+        # Adaptive per-host floor — only meaningful when a free tier can serve the
+        # skipped hosts. Built here (not inside fetch_all) so we can read its stats
+        # for the run summary, mirroring the Firecrawl pool.
+        memo = (
+            HostTierMemo(threshold=cfg.crawl.host_block_floor)
+            if (imp_pool is not None or needs_browser)
+            else None
+        )
         allowed_hosts = frozenset(h.lower() for h in cfg.seed.host_allow) or None
 
         async def _run() -> int:
@@ -699,6 +707,7 @@ def fetch(
                     firecrawl_pool=fc_pool,
                     impersonate_pool=imp_pool,
                     thin_text_threshold=cfg.crawl.thin_text_threshold,
+                    memo=memo,
                     allowed_hosts=allowed_hosts,
                 )
             finally:
@@ -722,6 +731,11 @@ def fetch(
                 "calls_succeeded": fc_pool.calls_succeeded,
                 "credits_used": fc_pool.credits_used,
                 "budget_remaining": fc_pool.budget_remaining(),
+            }
+        if memo is not None and (memo.floored_hosts or memo.skipped):
+            out["adaptive_floor"] = {
+                "floored_hosts": sorted(memo.floored_hosts),
+                "native_skipped": memo.skipped,
             }
         click.echo(json.dumps(out, indent=2))
 
@@ -1227,6 +1241,13 @@ def run(
         needs_browser_run = _resolve_browser_enabled(cfg, fetchable, profile)
         fc_pool = _build_firecrawl_pool(cfg, firecrawl_fallback)
         imp_pool = _build_impersonate_pool(cfg, impersonate_fallback)
+        # Adaptive per-host floor — built here so its stats reach the run summary;
+        # only when a free tier can serve the skipped hosts.
+        memo = (
+            HostTierMemo(threshold=cfg.crawl.host_block_floor)
+            if (imp_pool is not None or needs_browser_run)
+            else None
+        )
         # SSRF guard for redirect-following: only store bodies whose final host
         # is on the configured allow-list. Empty allow-list → None (no check).
         allowed_hosts = frozenset(h.lower() for h in cfg.seed.host_allow) or None
@@ -1250,6 +1271,7 @@ def run(
                     firecrawl_pool=fc_pool,
                     impersonate_pool=imp_pool,
                     thin_text_threshold=cfg.crawl.thin_text_threshold,
+                    memo=memo,
                     allowed_hosts=allowed_hosts,
                 )
             finally:
@@ -1372,6 +1394,11 @@ def run(
                 "calls_succeeded": fc_pool.calls_succeeded,
                 "credits_used": fc_pool.credits_used,
                 "budget_remaining": fc_pool.budget_remaining(),
+            }
+        if memo is not None and (memo.floored_hosts or memo.skipped):
+            run_summary["adaptive_floor"] = {
+                "floored_hosts": sorted(memo.floored_hosts),
+                "native_skipped": memo.skipped,
             }
         click.echo(json.dumps(run_summary, indent=2))
         # Exit codes (see docstring): 0 fully published, 1 pipeline error (Click

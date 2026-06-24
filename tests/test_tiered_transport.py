@@ -419,6 +419,7 @@ async def test_floored_host_skips_native_round_trip(tmp_path):
     assert route.call_count == 0  # native skipped entirely
     assert imp.calls == 1
     assert res.browser_version == CURL_CFFI_FETCHER_VERSION
+    assert memo.skipped == 1  # telemetry counted the skipped native round-trip
 
 
 @respx.mock
@@ -433,3 +434,14 @@ async def test_repeated_blocks_then_native_is_skipped(tmp_path):
     await _run_fetch(tmp_path, impersonate_pool=imp, memo=memo)
     assert route.call_count == 3  # 4th skipped native → curl_cffi direct
     assert imp.calls == 4
+    # telemetry: exactly one native round-trip was skipped, on the floored host
+    assert memo.skipped == 1
+    assert memo.floored_hosts == frozenset({host_of(URL)})
+
+
+def test_memo_skip_counter():
+    m = HostTierMemo(threshold=1)
+    assert m.skipped == 0
+    m.record_skip()
+    m.record_skip()
+    assert m.skipped == 2

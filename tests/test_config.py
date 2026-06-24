@@ -1,7 +1,6 @@
 """Config loader: defaults, file-based overrides, partial tier overrides, errors."""
 
 from datetime import timedelta
-from pathlib import Path
 
 import pytest
 
@@ -9,7 +8,6 @@ from sift import classify as classify_mod, decide as decide_mod, publish as publ
 from sift.config import (
     DEFAULT_TIERS,
     IndexConfig,
-    TierConfig,
     load_config,
 )
 
@@ -34,6 +32,7 @@ class TestDefaultsWhenNoFile:
         assert cfg.current_fy_start_year == 2025
         assert cfg.crawl.rate_per_sec == 3.0
         assert cfg.crawl.concurrency == 8
+        assert cfg.crawl.host_block_floor == 3
         assert cfg.publish.coverage_floor == 0.99
         assert cfg.seed.use_default_excludes is True
         assert cfg.tiers["LIVING"].floor_days == 7
@@ -56,6 +55,7 @@ concurrency = 16
 timeout_sec = 60
 retries = 5
 user_agent = "test-agent/1.0"
+host_block_floor = 7
 
 [publish]
 coverage_floor = 0.95
@@ -79,6 +79,7 @@ max_failures = 5
         assert cfg.current_fy_start_year == 2026
         assert cfg.crawl.rate_per_sec == 5.0
         assert cfg.crawl.user_agent == "test-agent/1.0"
+        assert cfg.crawl.host_block_floor == 7
         assert cfg.publish.coverage_floor == 0.95
         assert cfg.seed.host_allow == ("www.example.com", "x.com")
         assert cfg.seed.use_default_excludes is False
