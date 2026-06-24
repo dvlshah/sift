@@ -15,12 +15,10 @@ five URLs total per full run, no parallelism above pool concurrency.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
