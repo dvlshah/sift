@@ -4,6 +4,39 @@ All notable changes are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — Tiered fetch transport
+
+Crawl hardened (bot-managed) and JS-rendered sites with a self-hosted-by-default
+escalation ladder, and stop silently indexing empty SPA shells.
+
+### Added
+- **Tiered fetch transport** — per URL, sift now escalates only on need:
+  `native httpx → curl_cffi (TLS impersonation) → headless browser → Firecrawl`.
+  curl_cffi defeats most Cloudflare/Akamai/Imperva fingerprint blocks for free,
+  no browser; the browser is a real escalation rung (not just profile routing);
+  Firecrawl is the optional paid last resort.
+- **Content-quality escalation trigger** — a `2xx` response carrying an empty SPA
+  shell or a JS-challenge interstitial (previously committed as junk) is detected
+  (`sift.quality.looks_thin`) and routed up the ladder instead.
+- **Adaptive per-host floor** — after a host repeatedly blocks the native fetcher,
+  its remaining URLs skip the doomed round-trip (and its 429/503 retry-backoff)
+  and start at the escalation ladder. Pure speed heuristic; correctness unchanged.
+- **`[impersonate]` extra** (`pip install 'sift-engine[impersonate]'`, curl_cffi)
+  and the `--impersonate-fallback` flag on `sift run` / `sift fetch`.
+- **Config** — `[crawl.impersonate]` section, `[crawl].thin_text_threshold`, and
+  `[crawl.firecrawl].escalate_on_thin` (keep thin pages off the paid tier by default).
+
+### Changed
+- The browser tier degrades gracefully: a fallback-only run no longer hard-fails
+  at startup when Playwright is missing (profile-required SPA URLs still fail fast).
+- README slimmed to a landing page; the one-paste agent setup pins the `/sift`
+  skill fetch to a release tag.
+
+### Fixed
+- `sift-mcp` reports sift's own version, not the MCP SDK's.
+
+[0.2.0]: https://github.com/dvlshah/sift/releases/tag/v0.2.0
+
 ## [0.1.0] — Initial public release
 
 First public release of the sift engine.

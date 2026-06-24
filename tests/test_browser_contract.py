@@ -3,7 +3,7 @@
 These tests pin the public surface described in
 ``docs/design/browser-fetch.md``. The browser-only cases are marked
 ``xfail(strict=False)`` because they require playwright + an installed
-chromium (``pip install sift[browser] && python -m playwright install
+chromium (``pip install sift-engine[browser] && python -m playwright install
 chromium``). With ``strict=False`` they are skipped-as-xfail without
 chromium and reported as ``XPASS`` (non-failing) when chromium is present,
 so an installed-chromium environment does not fail the suite.
@@ -456,7 +456,7 @@ class TestBrowserVersionConstant:
 
 
 class TestOptionalBrowserExtra:
-    """``sift[browser]`` is the only opt-in path to install playwright."""
+    """``sift-engine[browser]`` is the only opt-in path to install playwright."""
 
     def test_pyproject_declares_browser_extra(self):
         try:
@@ -608,7 +608,7 @@ class TestBrowserPoolInterface:
 
     @pytest.mark.xfail(
         strict=False,
-        reason="needs playwright + chromium installed (pip install sift[browser] "
+        reason="needs playwright + chromium installed (pip install sift-engine[browser] "
         "&& python -m playwright install chromium)",
     )
     @pytest.mark.asyncio
@@ -638,7 +638,7 @@ class TestBrowserPoolInterface:
 
     @pytest.mark.xfail(
         strict=False,
-        reason="needs playwright + chromium installed (pip install sift[browser] "
+        reason="needs playwright + chromium installed (pip install sift-engine[browser] "
         "&& python -m playwright install chromium); see P0-2 shared-crawler contract",
     )
     @pytest.mark.asyncio
@@ -775,7 +775,7 @@ class TestEagerBrowserImportCheck:
             check_browser_available()
         msg = str(exc.value)
         assert "pip install" in msg
-        assert "sift[browser]" in msg or "'sift[browser]'" in msg
+        assert "sift-engine[browser]" in msg or "'sift-engine[browser]'" in msg
 
     def test_eager_check_silent_when_dep_present(self):
         """Smoke test: when playwright is installed, check returns None (no raise).
