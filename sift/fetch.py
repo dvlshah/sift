@@ -27,12 +27,14 @@ from aiolimiter import AsyncLimiter
 from . import paths
 from ._io import sha256_hex
 from .manifest import now_utc
+from .quality import looks_thin
 
 if TYPE_CHECKING:
     # Forward refs only — pulling these eagerly would defeat lazy crawl4ai.
     from .browser import BrowserPool
     from .sites import SiteProfile
     from .sources.firecrawl import FirecrawlScrapePool
+    from .sources.impersonate import CurlCffiScrapePool
 
 USER_AGENT = (
     "sift/0.1.0 (+https://github.com/dvlshah/sift; "
@@ -189,6 +191,59 @@ async def _one_request(
                 return 0, None, f"{type(e).__name__}: {e}"
 
 
+def _escalate_status_set(impersonate_pool, firecrawl_pool) -> frozenset[int]:
+    """Union of the configured tiers' trigger statuses. Empty when no escalation
+    pool is wired, so the native-only path is byte-identical to before."""
+    s: set[int] = set()
+    if impersonate_pool is not None:
+        s.update(impersonate_pool.escalate_statuses)
+    if firecrawl_pool is not None:
+        s.update(firecrawl_pool.fallback_statuses)
+    return frozenset(s)
+
+
+async def _escalate(
+    inp: "FetchInput",
+    root: Path,
+    reason: str,
+    *,
+    impersonate_pool: Optional["CurlCffiScrapePool"] = None,
+    firecrawl_pool: Optional["FirecrawlScrapePool"] = None,
+    allowed_hosts: Optional[frozenset[str]] = None,
+) -> Optional["FetchResult"]:
+    """Walk the escalation ladder for a URL the native fetch couldn't serve well.
+
+    * Tier 2 — curl_cffi impersonation (free, self-hosted): defeats TLS-fingerprint
+      and UA blocks without a browser; tried first so it absorbs most escalations
+      at zero cost.
+    * Tier 3 — Firecrawl (paid, browser+proxy): terminal tier for JS-challenge
+      edges. A ``thin-content`` reason only reaches it when ``escalate_on_thin``
+      is set, so empty shells never silently burn credits.
+
+    Returns the first FetchResult that passes a tier's quality gate, or ``None``
+    when every available tier declines (caller keeps the native failure). Tier
+    errors are swallowed per-tier — escalation never crashes the run.
+    """
+    if impersonate_pool is not None:
+        from .sources.impersonate import EscalateError
+        try:
+            return await impersonate_pool.fetch(inp, root, allowed_hosts=allowed_hosts)
+        except EscalateError:
+            pass  # still blocked/thin at tier 2 → fall through to tier 3
+
+    if firecrawl_pool is not None and firecrawl_pool.budget_remaining() > 0:
+        if reason == "thin-content" and not getattr(
+            firecrawl_pool.cfg, "escalate_on_thin", False
+        ):
+            return None
+        from .sources.firecrawl import FirecrawlError
+        try:
+            return await firecrawl_pool.fetch(inp, root)
+        except FirecrawlError:
+            pass  # native failure stands; pool counters advanced for telemetry
+    return None
+
+
 async def fetch_one(
     client: httpx.AsyncClient,
     inp: FetchInput,
@@ -198,6 +253,8 @@ async def fetch_one(
     *,
     retries: int = DEFAULT_RETRIES,
     firecrawl_pool: Optional["FirecrawlScrapePool"] = None,
+    impersonate_pool: Optional["CurlCffiScrapePool"] = None,
+    thin_text_threshold: int = 0,
     allowed_hosts: Optional[frozenset[str]] = None,
 ) -> FetchResult:
     """Fetch with bounded retry on transient errors. Idempotent at the URL level.
@@ -237,7 +294,19 @@ async def fetch_one(
             await asyncio.sleep(backoff)
 
     now = now_utc()
+    escalate_statuses = _escalate_status_set(impersonate_pool, firecrawl_pool)
+
     if resp is None:
+        # No HTTP exchange completed after retries — frequently a TLS-fingerprint
+        # reset on a hardened edge. Let the ladder try the impersonation tier
+        # (a curl_cffi handshake often succeeds where httpx's was reset).
+        esc = await _escalate(
+            inp, root, last_error or "network-failure",
+            impersonate_pool=impersonate_pool, firecrawl_pool=firecrawl_pool,
+            allowed_hosts=allowed_hosts,
+        )
+        if esc is not None:
+            return esc
         return _no_body_result(inp, last_status, last_error or "network-failure", now)
 
     etag = resp.headers.get("etag")
@@ -250,19 +319,18 @@ async def fetch_one(
         return _no_body_result(inp, resp.status_code, None, now, etag=etag, last_modified=last_mod)
 
     if resp.status_code >= 400:
-        # Firecrawl fallback for bot-block signatures (default 401/403). Only
-        # consulted when a pool was provided, the status is in its configured
-        # fallback set, and credits remain. FirecrawlError preserves the
-        # native failure — the escalation never crashes the run, and the
-        # pool's counters still advance for telemetry / the run summary.
-        if (firecrawl_pool is not None
-                and resp.status_code in firecrawl_pool.fallback_statuses
-                and firecrawl_pool.budget_remaining() > 0):
-            from .sources.firecrawl import FirecrawlError
-            try:
-                return await firecrawl_pool.fetch(inp, root)
-            except FirecrawlError:
-                pass  # native failure stands; counters advanced inside pool.fetch
+        # Bot-block / rate-limit signatures escalate up the ladder (curl_cffi
+        # first, then Firecrawl). ``escalate_statuses`` is the union of the wired
+        # tiers' triggers; with no pools it's empty and this is a no-op, so the
+        # native-only path stays byte-identical.
+        if resp.status_code in escalate_statuses:
+            esc = await _escalate(
+                inp, root, f"http-{resp.status_code}",
+                impersonate_pool=impersonate_pool, firecrawl_pool=firecrawl_pool,
+                allowed_hosts=allowed_hosts,
+            )
+            if esc is not None:
+                return esc
         return _no_body_result(
             inp, resp.status_code, f"http-{resp.status_code}", now,
             etag=etag, last_modified=last_mod,
@@ -286,12 +354,30 @@ async def fetch_one(
             inp, resp.status_code, f"body-too-large:{len(body)}>{MAX_BODY_BYTES}", now,
             etag=etag, last_modified=last_mod,
         )
+
+    # Content-quality escalation: a 200 carrying an empty SPA shell or a JS
+    # challenge interstitial is a SILENT failure the status-only path missed —
+    # it has a success code but ~no content. Route it up the ladder before
+    # committing. If no tier improves it, the real 200 still stands (best
+    # available). No-op unless a tier is wired AND thin_text_threshold > 0.
+    ct = resp.headers.get("content-type")
+    if (impersonate_pool is not None or firecrawl_pool is not None) and looks_thin(
+        body, ct, thin_text_threshold
+    ):
+        esc = await _escalate(
+            inp, root, "thin-content",
+            impersonate_pool=impersonate_pool, firecrawl_pool=firecrawl_pool,
+            allowed_hosts=allowed_hosts,
+        )
+        if esc is not None:
+            return esc
+
     raw_hash, n_bytes = store_body(root, body)
     return FetchResult(
         url=inp.url, decision=inp.decision, status=resp.status_code,
         etag=etag, last_modified=last_mod, raw_hash=raw_hash, raw_bytes=n_bytes,
         fetched_at=now, error=None,
-        content_type=resp.headers.get("content-type"),
+        content_type=ct,
     )
 
 
@@ -376,6 +462,8 @@ async def fetch_all(
     browser_pool: Optional["BrowserPool"] = None,
     user_agent: Optional[str] = None,
     firecrawl_pool: Optional["FirecrawlScrapePool"] = None,
+    impersonate_pool: Optional["CurlCffiScrapePool"] = None,
+    thin_text_threshold: int = 0,
     allowed_hosts: Optional[frozenset[str]] = None,
 ) -> int:
     """Fetch all inputs honoring rate limit. Appends each result to fetch_log
@@ -441,6 +529,8 @@ async def fetch_all(
                     tasks.append(_guarded_fetch(inp, fetch_one(
                         client, inp, root, limiter, semaphore,
                         firecrawl_pool=firecrawl_pool,
+                        impersonate_pool=impersonate_pool,
+                        thin_text_threshold=thin_text_threshold,
                         allowed_hosts=allowed_hosts,
                     )))
             for inp in browser_inputs:

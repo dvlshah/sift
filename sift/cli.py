@@ -172,6 +172,31 @@ def _build_firecrawl_pool(cfg: IndexConfig, flag_enable: bool):
     return FirecrawlScrapePool(cfg.crawl.firecrawl)
 
 
+def _build_impersonate_pool(cfg: IndexConfig, flag_enable: bool):
+    """Construct a CurlCffiScrapePool (tier-2 TLS impersonation) when enabled via
+    flag or config AND curl_cffi is importable.
+
+    Free and self-hosted — no API key, no per-request cost. Returns ``None`` when
+    disabled; warns and returns ``None`` if the optional dep is missing so the
+    run continues native-only rather than crashing (mirrors the Firecrawl path).
+    """
+    enabled = flag_enable or cfg.crawl.impersonate.enabled
+    if not enabled:
+        return None
+    try:
+        import curl_cffi  # noqa: F401
+    except ImportError:
+        click.echo(
+            "warn: --impersonate-fallback enabled but curl_cffi is not "
+            "installed; install with `pip install 'sift-engine[impersonate]'`. "
+            "Falling back to native-only fetch.",
+            err=True,
+        )
+        return None
+    from .sources.impersonate import CurlCffiScrapePool
+    return CurlCffiScrapePool(cfg.crawl.impersonate)
+
+
 @click.group()
 def main():
     """Deterministic website indexer (site-agnostic, profile-driven)."""
@@ -449,10 +474,17 @@ def plan(root: Path, config_path: Optional[Path], run_id: Optional[str],
                    "Firecrawl /v2/scrape. Costs Firecrawl credits; capped per "
                    "[crawl.firecrawl] max_credits_per_run. Requires "
                    "FIRECRAWL_API_KEY env. Overrides config.")
+@click.option("--impersonate-fallback", is_flag=True, default=False,
+              help="Tier-2 escalation: on a fingerprint/bot-manager block "
+                   "(403/429/503), a TLS reset, or a thin 200, re-fetch with a "
+                   "real browser's TLS fingerprint via curl_cffi. Free and "
+                   "self-hosted (no API key); runs before any Firecrawl tier. "
+                   "Needs `pip install 'sift-engine[impersonate]'`. Overrides config.")
 def fetch(root: Path, config_path: Optional[Path], run_id: str,
           limit: Optional[int], rate: Optional[float],
           concurrency: Optional[int], decisions: tuple[str, ...],
-          tiers: tuple[str, ...], firecrawl_fallback: bool):
+          tiers: tuple[str, ...], firecrawl_fallback: bool,
+          impersonate_fallback: bool):
     """Phase 2: fetch URLs per plan.jsonl. Idempotent; resumes via fetch.log."""
     cfg = _load_cli_config(config_path)
     rate = rate if rate is not None else cfg.crawl.rate_per_sec
@@ -494,6 +526,8 @@ def fetch(root: Path, config_path: Optional[Path], run_id: str,
             statuses[r.status] = statuses.get(r.status, 0) + 1
 
         fc_pool = _build_firecrawl_pool(cfg, firecrawl_fallback)
+        imp_pool = _build_impersonate_pool(cfg, impersonate_fallback)
+        allowed_hosts = frozenset(h.lower() for h in cfg.seed.host_allow) or None
 
         async def _run() -> int:
             # BrowserPool is constructed only if a SPA URL is actually pending —
@@ -512,12 +546,17 @@ def fetch(root: Path, config_path: Optional[Path], run_id: str,
                     browser_pool=pool,
                     user_agent=cfg.crawl.user_agent,
                     firecrawl_pool=fc_pool,
+                    impersonate_pool=imp_pool,
+                    thin_text_threshold=cfg.crawl.thin_text_threshold,
+                    allowed_hosts=allowed_hosts,
                 )
             finally:
                 if pool is not None:
                     await pool.aclose()
                 if fc_pool is not None:
                     await fc_pool.aclose()
+                if imp_pool is not None:
+                    await imp_pool.aclose()
 
         fetched = asyncio.run(_run())
         out: dict = {"run_id": run_id, "new_fetches": fetched,
@@ -796,6 +835,12 @@ def publish(root: Path, config_path: Optional[Path], run_id: str, skip_artifacts
                    "Firecrawl /v2/scrape. Costs Firecrawl credits; capped per "
                    "[crawl.firecrawl] max_credits_per_run. Requires "
                    "FIRECRAWL_API_KEY env. Overrides config.")
+@click.option("--impersonate-fallback", is_flag=True, default=False,
+              help="Tier-2 escalation: on a fingerprint/bot-manager block "
+                   "(403/429/503), a TLS reset, or a thin 200, re-fetch with a "
+                   "real browser's TLS fingerprint via curl_cffi. Free and "
+                   "self-hosted (no API key); runs before any Firecrawl tier. "
+                   "Needs `pip install 'sift-engine[impersonate]'`. Overrides config.")
 @click.option("--only-urls", "only_urls_path",
               type=click.Path(exists=True, path_type=Path), default=None,
               help="Scope the plan to URLs listed in this file (one URL per "
@@ -809,6 +854,7 @@ def run(root: Path, config_path: Optional[Path],
         concurrency: Optional[int],
         tiers: tuple[str, ...], coverage_base: Optional[str],
         run_id_opt: Optional[str], firecrawl_fallback: bool,
+        impersonate_fallback: bool,
         only_urls_path: Optional[Path]):
     """Run plan -> fetch -> extract -> commit -> publish end-to-end with per-phase timing.
 
@@ -894,6 +940,7 @@ def run(root: Path, config_path: Optional[Path],
             from .browser import check_browser_available
             check_browser_available()
         fc_pool = _build_firecrawl_pool(cfg, firecrawl_fallback)
+        imp_pool = _build_impersonate_pool(cfg, impersonate_fallback)
         # SSRF guard for redirect-following: only store bodies whose final host
         # is on the configured allow-list. Empty allow-list → None (no check).
         allowed_hosts = frozenset(h.lower() for h in cfg.seed.host_allow) or None
@@ -911,6 +958,8 @@ def run(root: Path, config_path: Optional[Path],
                     browser_pool=pool,
                     user_agent=cfg.crawl.user_agent,
                     firecrawl_pool=fc_pool,
+                    impersonate_pool=imp_pool,
+                    thin_text_threshold=cfg.crawl.thin_text_threshold,
                     allowed_hosts=allowed_hosts,
                 )
             finally:
@@ -918,6 +967,8 @@ def run(root: Path, config_path: Optional[Path],
                     await pool.aclose()
                 if fc_pool is not None:
                     await fc_pool.aclose()
+                if imp_pool is not None:
+                    await imp_pool.aclose()
 
         n_fetched = asyncio.run(_do_fetch())
         click.echo(f"fetched: {n_fetched}")
