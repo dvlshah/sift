@@ -168,16 +168,33 @@ def host_of(url: str) -> str:
     return urlparse(url).netloc.lower()
 
 
+#: Sentinel status from _one_request: the adaptive memo skipped the native
+#: request for a host known to block it. The caller routes straight to the ladder.
+HOST_FLOORED = -1
+
+
 async def _one_request(
     client: httpx.AsyncClient,
     inp: FetchInput,
     limiter: AsyncLimiter,
     semaphore: asyncio.Semaphore,
+    *,
+    memo: Optional["HostTierMemo"] = None,
+    host: Optional[str] = None,
+    free_tier: bool = False,
 ) -> tuple[int, httpx.Response | None, Optional[str]]:
     """Send one request honoring rate limit + concurrency. Caller handles retries.
 
-    Returns (status_int, response_or_None, error_string_or_None).
-    A response of None means hard failure (no HTTP exchange completed).
+    Returns (status_int, response_or_None, error_string_or_None). A response of
+    None means hard failure (no HTTP exchange completed).
+
+    The adaptive host floor is checked HERE — *after* acquiring the concurrency
+    semaphore, the natural serialization point. That's what makes it work under
+    concurrency: URLs queued behind the semaphore re-check when they get a slot,
+    so they see a floor that earlier completions set, and skip the request. A
+    top-of-fetch check would be evaluated by every coroutine before any block was
+    recorded (they all start together), and never fire. Returns
+    ``(HOST_FLOORED, None, None)`` to signal the skip without making the request.
     """
     # User-Agent is set as a default header on the AsyncClient in fetch_all,
     # so every request from this client (including redirects) gets it without
@@ -190,6 +207,13 @@ async def _one_request(
             headers["If-Modified-Since"] = inp.last_modified
 
     async with semaphore:
+        if (
+            memo is not None
+            and free_tier
+            and host is not None
+            and memo.should_skip_native(host)
+        ):
+            return HOST_FLOORED, None, None  # skip the doomed request entirely
         async with limiter:
             try:
                 resp = await client.get(inp.url, headers=headers, follow_redirects=True)
@@ -201,6 +225,56 @@ async def _one_request(
 # Statuses that trigger escalation to the self-hosted browser tier when no
 # impersonation pool contributes its own set. Bot-block / rate-limit signatures.
 BROWSER_ESCALATE_STATUSES = (403, 429, 503)
+
+# Consecutive native blocks for a host before its remaining URLs skip the native
+# fetcher entirely (see HostTierMemo). 0 disables the adaptive floor.
+DEFAULT_HOST_BLOCK_FLOOR = 3
+
+
+class HostTierMemo:
+    """Per-run adaptive routing for large crawls of hardened hosts.
+
+    Once a host has blocked the native fetcher ``threshold`` times, its remaining
+    URLs **skip the native round-trip** — and crucially its 429/503 retry-backoff
+    (~10s/URL) — starting straight at the escalation ladder. On a thousand-URL
+    crawl of a bot-managed host that's the difference between minutes and hours.
+
+    It is a pure *speed* heuristic and deliberately safe:
+      * It only ever RAISES a host's floor (monotonic) and never changes WHICH
+        content is accepted — every quality/SSRF/verify gate still runs.
+      * Consulted only when a FREE tier (curl_cffi/browser) exists, so a host is
+        never skipped onto a paid tier that would bill per URL.
+      * Lock-free on purpose: concurrent updates race benignly (at worst a few
+        extra native attempts before the floor latches), and skipping a lock
+        keeps the hot path fast. A wrong guess only costs a redundant curl_cffi
+        fetch — correctness is unaffected.
+    """
+
+    def __init__(self, threshold: int = DEFAULT_HOST_BLOCK_FLOOR) -> None:
+        self._threshold = threshold
+        self._blocks: dict[str, int] = {}
+        self._floored: set[str] = set()
+
+    def should_skip_native(self, host: str) -> bool:
+        return host in self._floored
+
+    def record_block(self, host: str) -> None:
+        if self._threshold <= 0 or host in self._floored:
+            return
+        n = self._blocks.get(host, 0) + 1
+        self._blocks[host] = n
+        if n >= self._threshold:
+            self._floored.add(host)
+
+    def record_ok(self, host: str) -> None:
+        # Native served this host fine → clear any transient block tally so a
+        # one-off hiccup never floors a healthy host.
+        if host not in self._floored:
+            self._blocks.pop(host, None)
+
+    @property
+    def floored_hosts(self) -> frozenset[str]:
+        return frozenset(self._floored)
 
 
 def _escalate_status_set(
@@ -234,7 +308,13 @@ async def _escalate_browser_tier(
     """
     from .sources.impersonate import EscalateError
 
-    res = await _fetch_browser(inp, root, profile, pool)
+    try:
+        res = await _fetch_browser(inp, root, profile, pool)
+    except Exception as e:
+        # A browser problem (missing Playwright, launch crash, OOM) must never
+        # take down a fetch — decline so the ladder continues and any native
+        # body still stands as the last resort.
+        raise EscalateError(f"browser {type(e).__name__}") from e
     if res.error is not None or res.raw_hash is None:
         raise EscalateError(f"browser {res.error or 'no-body'}")
     if thin_text_threshold > 0 and looks_thin(
@@ -316,6 +396,7 @@ async def fetch_one(
     browser_pool: Optional["BrowserPool"] = None,
     profile: Optional["SiteProfile"] = None,
     thin_text_threshold: int = 0,
+    memo: Optional["HostTierMemo"] = None,
     allowed_hosts: Optional[frozenset[str]] = None,
 ) -> FetchResult:
     """Fetch with bounded retry on transient errors. Idempotent at the URL level.
@@ -331,13 +412,28 @@ async def fetch_one(
     pull an internal/metadata endpoint's response into the index under the
     original URL. ``None`` disables the check (back-compat; the CLI always
     passes the run's seed.host_allow)."""
+    host = host_of(inp.url)
+    free_tier = impersonate_pool is not None or browser_pool is not None
+    escalate_kwargs = dict(
+        impersonate_pool=impersonate_pool,
+        browser_pool=browser_pool,
+        profile=profile,
+        firecrawl_pool=firecrawl_pool,
+        allowed_hosts=allowed_hosts,
+        thin_text_threshold=thin_text_threshold,
+    )
+
     last_error: Optional[str] = None
     last_status = 0
 
     for attempt in range(retries + 1):
-        status, resp, err = await _one_request(client, inp, limiter, semaphore)
+        status, resp, err = await _one_request(
+            client, inp, limiter, semaphore, memo=memo, host=host, free_tier=free_tier
+        )
         last_status = status
         last_error = err
+        if status == HOST_FLOORED:
+            break  # adaptive skip — no request was made, no retries; escalate below
         transient = err is not None or status in (408, 429, 500, 502, 503, 504)
         if not transient:
             break
@@ -356,20 +452,22 @@ async def fetch_one(
         impersonate_pool, browser_pool, firecrawl_pool
     )
 
+    if last_status == HOST_FLOORED:
+        # Adaptive floor skipped the native request — go straight to the ladder.
+        # No record_block (host is already floored); no native body to fall back to.
+        esc = await _escalate(inp, root, "host-floored", **escalate_kwargs)
+        if esc is not None:
+            return esc
+        return _no_body_result(inp, 0, f"host-floored-unserved:{host}", now)
+
     if resp is None:
         # No HTTP exchange completed after retries — frequently a TLS-fingerprint
         # reset on a hardened edge. Let the ladder try the impersonation tier
         # (a curl_cffi handshake often succeeds where httpx's was reset).
+        if memo is not None and free_tier:
+            memo.record_block(host)
         esc = await _escalate(
-            inp,
-            root,
-            last_error or "network-failure",
-            impersonate_pool=impersonate_pool,
-            browser_pool=browser_pool,
-            profile=profile,
-            firecrawl_pool=firecrawl_pool,
-            allowed_hosts=allowed_hosts,
-            thin_text_threshold=thin_text_threshold,
+            inp, root, last_error or "network-failure", **escalate_kwargs
         )
         if esc is not None:
             return esc
@@ -392,16 +490,10 @@ async def fetch_one(
         # tiers' triggers; with no pools it's empty and this is a no-op, so the
         # native-only path stays byte-identical.
         if resp.status_code in escalate_statuses:
+            if memo is not None and free_tier:
+                memo.record_block(host)
             esc = await _escalate(
-                inp,
-                root,
-                f"http-{resp.status_code}",
-                impersonate_pool=impersonate_pool,
-                browser_pool=browser_pool,
-                profile=profile,
-                firecrawl_pool=firecrawl_pool,
-                allowed_hosts=allowed_hosts,
-                thin_text_threshold=thin_text_threshold,
+                inp, root, f"http-{resp.status_code}", **escalate_kwargs
             )
             if esc is not None:
                 return esc
@@ -413,6 +505,11 @@ async def fetch_one(
             etag=etag,
             last_modified=last_mod,
         )
+
+    # 2xx — native served this host (clear any transient block tally so a
+    # one-off hiccup never floors a healthy host).
+    if memo is not None and free_tier:
+        memo.record_ok(host)
 
     # 2xx with body.
     # SSRF guard: redirects were followed, so re-validate the FINAL host
@@ -453,17 +550,7 @@ async def fetch_one(
         or firecrawl_pool is not None
     )
     if any_tier and looks_thin(body, ct, thin_text_threshold):
-        esc = await _escalate(
-            inp,
-            root,
-            "thin-content",
-            impersonate_pool=impersonate_pool,
-            browser_pool=browser_pool,
-            profile=profile,
-            firecrawl_pool=firecrawl_pool,
-            allowed_hosts=allowed_hosts,
-            thin_text_threshold=thin_text_threshold,
-        )
+        esc = await _escalate(inp, root, "thin-content", **escalate_kwargs)
         if esc is not None:
             return esc
 
@@ -594,6 +681,15 @@ async def fetch_all(
     if not pending:
         return 0
 
+    # One adaptive per-host memo for the whole run, only when a FREE escalation
+    # tier exists (never skip native onto a paid-only tier). Shared across all
+    # fetch_one tasks so a host blocked early speeds up its later URLs.
+    memo = (
+        HostTierMemo()
+        if (impersonate_pool is not None or browser_pool is not None)
+        else None
+    )
+
     # Split by transport. Browser-required URLs sidestep the per-host rate
     # limiter — they're already much slower (5-10s each) so the cost driver
     # is the BrowserPool semaphore, not requests/sec.
@@ -654,6 +750,7 @@ async def fetch_all(
                                 browser_pool=browser_pool,
                                 profile=profile,
                                 thin_text_threshold=thin_text_threshold,
+                                memo=memo,
                                 allowed_hosts=allowed_hosts,
                             ),
                         )

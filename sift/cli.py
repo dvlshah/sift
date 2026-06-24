@@ -207,6 +207,37 @@ def _build_impersonate_pool(cfg: IndexConfig, flag_enable: bool):
     return CurlCffiScrapePool(cfg.crawl.impersonate)
 
 
+def _resolve_browser_enabled(cfg: IndexConfig, fetchable, profile) -> bool:
+    """Decide whether to stand up the browser tier for this run.
+
+    Returns ``False`` (no pool built) when browser is disabled, OR when it would
+    only be the tier-3 *fallback* and Playwright isn't installed — in which case
+    the run **degrades to the other tiers instead of crashing**. URLs the profile
+    marks as browser-required still fail fast with a clear install hint, since
+    they cannot be served any other way. (Chromium itself is launched lazily on
+    the first render, so an enabled-but-unused browser costs nothing.)
+    """
+    if not cfg.browser.enabled:
+        return False
+    from .browser import BrowserNotInstalledError, check_browser_available
+
+    has_spa = any(profile.requires_browser(p.url) for p in fetchable)
+    if has_spa:
+        check_browser_available()  # MUST render these → fail fast
+        return True
+    try:
+        check_browser_available()
+    except BrowserNotInstalledError:
+        click.echo(
+            "warn: [browser].enabled but Playwright is not installed; browser "
+            "fallback tier disabled for this run "
+            "(pip install 'sift-engine[browser]' && python -m playwright install chromium).",
+            err=True,
+        )
+        return False
+    return True
+
+
 @click.group()
 def main():
     """Deterministic website indexer (site-agnostic, profile-driven)."""
@@ -624,13 +655,10 @@ def fetch(
             for p in fetchable
         ]
         profile = sites_mod.current_profile()
-        # Enabled → browser is the SPA-render path AND the tier-3 escalation
-        # fallback; gate on `enabled` (see run for the trade-off note).
-        needs_browser = cfg.browser.enabled
-        if needs_browser:
-            from .browser import check_browser_available
-
-            check_browser_available()
+        # Browser = SPA-render path AND tier-3 escalation fallback. Builds a pool
+        # when usable; degrades (no crash) if it's only a fallback and the dep is
+        # missing. Chromium launches lazily on first render, so unused = free.
+        needs_browser = _resolve_browser_enabled(cfg, fetchable, profile)
         n_browser = sum(1 for p in fetchable if profile.requires_browser(p.url))
         click.echo(
             f"fetching {len(inputs)} URLs (rate={rate}/s, concurrency={concurrency}"
@@ -1192,18 +1220,11 @@ def run(
         record_run_phase(conn, run_id, "fetch")
         fl = paths.fetch_log_path(root, run_id)
         ph = _phase("fetch")
-        # Browser enabled → it's both the SPA-render path AND the tier-3 escalation
-        # fallback (httpx → curl_cffi → browser → Firecrawl), so gate on `enabled`
-        # rather than on whether a SPA URL is pending. Trade-off: a browser-enabled
-        # run pays the one-time Playwright startup even if nothing escalates; a lazy
-        # pool factory is a documented follow-up.
-        needs_browser_run = cfg.browser.enabled
-        if needs_browser_run:
-            # Probe up front so a missing Playwright hard-fails with a clear
-            # install hint (the guard records a terminal 'failed').
-            from .browser import check_browser_available
-
-            check_browser_available()
+        # Browser = SPA-render path AND tier-3 escalation fallback (httpx →
+        # curl_cffi → browser → Firecrawl). Builds a pool when usable; degrades
+        # (no crash) if it's only a fallback and Playwright is missing. Chromium
+        # launches lazily on first render, so an enabled-but-unused browser is free.
+        needs_browser_run = _resolve_browser_enabled(cfg, fetchable, profile)
         fc_pool = _build_firecrawl_pool(cfg, firecrawl_fallback)
         imp_pool = _build_impersonate_pool(cfg, impersonate_fallback)
         # SSRF guard for redirect-following: only store bodies whose final host

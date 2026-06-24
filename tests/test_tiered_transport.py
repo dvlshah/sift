@@ -15,7 +15,7 @@ import respx
 from aiolimiter import AsyncLimiter
 from httpx import Response
 
-from sift.fetch import FetchInput, FetchResult, fetch_one
+from sift.fetch import FetchInput, FetchResult, HostTierMemo, fetch_one, host_of
 from sift.quality import looks_thin
 from sift.sources.firecrawl import FIRECRAWL_FETCHER_VERSION
 from sift.sources.impersonate import CURL_CFFI_FETCHER_VERSION, EscalateError
@@ -123,6 +123,7 @@ async def _run_fetch(
     profile=None,
     firecrawl_pool=None,
     thin_text_threshold=500,
+    memo=None,
 ):
     inp = FetchInput(url=URL, decision="FETCH", etag=None, last_modified=None)
     async with httpx.AsyncClient() as client:
@@ -138,6 +139,7 @@ async def _run_fetch(
             profile=profile,
             firecrawl_pool=firecrawl_pool,
             thin_text_threshold=thin_text_threshold,
+            memo=memo,
         )
 
 
@@ -330,3 +332,104 @@ async def test_browser_precedes_firecrawl(tmp_path, monkeypatch):
     )
     assert fc.calls == 0
     assert res.browser_version == BROWSER_VER
+
+
+@respx.mock
+async def test_browser_render_crash_falls_through(tmp_path, monkeypatch):
+    # a browser EXCEPTION (not just a failure row) must not crash the fetch —
+    # it declines and the ladder continues to Firecrawl
+    async def boom(inp, root, profile, pool):
+        from sift.browser import BrowserNotInstalledError
+
+        raise BrowserNotInstalledError("no playwright")
+
+    monkeypatch.setattr(fetchmod, "_fetch_browser", boom)
+    respx.get(URL).mock(return_value=Response(403))
+    fc = FakeFirecrawl(result=_result(200, FIRECRAWL_FETCHER_VERSION))
+    res = await _run_fetch(
+        tmp_path, browser_pool=object(), profile=object(), firecrawl_pool=fc
+    )
+    assert fc.calls == 1
+    assert res.browser_version == FIRECRAWL_FETCHER_VERSION
+
+
+@respx.mock
+async def test_browser_crash_no_other_tier_keeps_native_failure(tmp_path, monkeypatch):
+    # browser is the only escalation tier and it crashes → native failure stands,
+    # the run does NOT crash
+    async def boom(inp, root, profile, pool):
+        raise RuntimeError("render boom")
+
+    monkeypatch.setattr(fetchmod, "_fetch_browser", boom)
+    respx.get(URL).mock(return_value=Response(403))
+    res = await _run_fetch(tmp_path, browser_pool=object(), profile=object())
+    assert res.status == 403
+    assert res.raw_hash is None
+
+
+# ---- adaptive per-host floor (HostTierMemo) --------------------------------
+
+
+def test_memo_floors_after_threshold():
+    m = HostTierMemo(threshold=3)
+    h = "blocked.test"
+    m.record_block(h)
+    m.record_block(h)
+    assert not m.should_skip_native(h)  # 2 < 3
+    m.record_block(h)
+    assert m.should_skip_native(h)  # 3rd latches the floor
+
+
+def test_memo_ok_resets_transient_blocks():
+    m = HostTierMemo(threshold=3)
+    h = "flaky.test"
+    m.record_block(h)
+    m.record_block(h)
+    m.record_ok(h)  # healthy again → tally cleared
+    m.record_block(h)
+    m.record_block(h)
+    assert not m.should_skip_native(h)  # never reached 3 in a row
+
+
+def test_memo_threshold_zero_never_floors():
+    m = HostTierMemo(threshold=0)
+    for _ in range(10):
+        m.record_block("x.test")
+    assert not m.should_skip_native("x.test")
+
+
+def test_memo_floor_is_sticky():
+    m = HostTierMemo(threshold=2)
+    h = "hard.test"
+    m.record_block(h)
+    m.record_block(h)
+    m.record_ok(h)  # ok after flooring does NOT un-floor
+    assert m.should_skip_native(h)
+
+
+@respx.mock
+async def test_floored_host_skips_native_round_trip(tmp_path):
+    # pre-floor the host → fetch_one must NOT touch the native client
+    route = respx.get(URL).mock(return_value=Response(403))
+    memo = HostTierMemo(threshold=3)
+    for _ in range(3):
+        memo.record_block(host_of(URL))
+    imp = FakeImpersonate(result=_result(200, CURL_CFFI_FETCHER_VERSION))
+    res = await _run_fetch(tmp_path, impersonate_pool=imp, memo=memo)
+    assert route.call_count == 0  # native skipped entirely
+    assert imp.calls == 1
+    assert res.browser_version == CURL_CFFI_FETCHER_VERSION
+
+
+@respx.mock
+async def test_repeated_blocks_then_native_is_skipped(tmp_path):
+    # end-to-end: 3 URLs block native, the 4th skips it (route count stops rising)
+    route = respx.get(URL).mock(return_value=Response(403))
+    memo = HostTierMemo(threshold=3)
+    imp = FakeImpersonate(result=_result(200, CURL_CFFI_FETCHER_VERSION))
+    for _ in range(3):
+        await _run_fetch(tmp_path, impersonate_pool=imp, memo=memo)
+    assert route.call_count == 3  # native tried for the first 3
+    await _run_fetch(tmp_path, impersonate_pool=imp, memo=memo)
+    assert route.call_count == 3  # 4th skipped native → curl_cffi direct
+    assert imp.calls == 4
