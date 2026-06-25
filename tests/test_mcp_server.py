@@ -243,11 +243,11 @@ class TestReadFacts:
 
 
 class TestServerWiring:
-    def test_list_tools_returns_all_seven(self, index):
+    def test_list_tools_returns_all_read_tools(self, index):
         descs = mcp_server._tool_descriptors()
         names = {t.name for t in descs}
         assert names == {
-            "snapshot_status",
+            "snapshot_status", "changed_since",
             "read_md", "grep_corpus", "glob_corpus",
             "list_dir", "query_manifest", "read_facts",
         }

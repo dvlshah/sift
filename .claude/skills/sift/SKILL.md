@@ -54,6 +54,7 @@ If you were invoked with **no specific question** (e.g. a bare `/sift`), stop af
 3. `read_facts` when the answer is a **number, rate, threshold, or deadline** — facts are atomic structured records with `$schema` + `source_url` + `content_hash`, more reliable than prose.
 4. `query_manifest` for cross-cutting questions the filesystem can't answer ("pages changed in the last 7 days", "all FRESH pages under parent_guide X"). SELECT/WITH only. Discover schema with `SELECT sql FROM sqlite_master WHERE type='table'`.
 5. `glob_corpus` / `list_dir` to explore the path tree when you don't yet know the shape ("all 2025 forms", what's under `facts/`).
+6. `changed_since(since=<run_id>)` to stay current across sessions — remember the `run_id` from `snapshot_status`, then pull only the added/modified/removed pages since it and `read_md` just those, instead of re-reading. Store the new `cursor` it returns.
 
 **Output caps — design your call around them:**
 
@@ -64,6 +65,7 @@ If you were invoked with **no specific question** (e.g. a bare `/sift`), stop af
 | `glob_corpus` | 500 paths | narrow the pattern |
 | `list_dir` | 500 entries | go one directory deeper |
 | `query_manifest` | 500 rows | add `LIMIT` / a tighter `WHERE` |
+| `changed_since` | 500 per group | raise `limit`, page with `offset`, or narrow with `path_prefix` / `tier` |
 
 **3. Cite with provenance.** Every markdown file leads with YAML frontmatter carrying `url`, `fetched_at`, `content_hash`, `tier`, and anchors. When you state a fact from the corpus, cite the **source url + `content_hash` + `fetched_at`** (and the `run_id` from `snapshot_status`). That dated, hash-pinned citation is sift's whole point — don't drop it on answers that matter.
 

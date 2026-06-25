@@ -4,6 +4,19 @@ All notable changes are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`changed_since` MCP tool** — the temporal diff feed. Given a cursor (a
+  `run_id` from `snapshot_status`, or an ISO-8601 timestamp), returns the net
+  added / modified / removed pages up to the current published snapshot, read
+  from the hash-chained `changelog.jsonl`. Lets an agent stay current by pulling
+  only the delta instead of re-reading the corpus, then storing the new cursor.
+  The window is bounded to the **published** snapshot, so transitions from a
+  later unpublished/degraded run never leak in (the delta matches what `read_md`
+  serves). Fan-out-eligible in multi-index mode. Brings the read surface to eight
+  tools; the server `instructions` now teach the cursor loop.
+
 ## [0.2.0] — Tiered fetch transport
 
 Crawl hardened (bot-managed) and JS-rendered sites with a self-hosted-by-default
