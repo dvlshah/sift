@@ -37,6 +37,16 @@ All notable changes are documented here. The format follows
   dated byte-integrity*, **not** non-membership or "current truth"
   (`SECURITY.md`). Stress-tested across 33 live indexes (33,227 pages, 0
   failures). Read surface is now ten tools.
+- **RFC-3161 external timestamp anchor** — set `[publish].timestamp_tsa_url` and
+  every publish obtains a signed Time-Stamp Token over the `merkle_root` from a
+  third-party Time-Stamp Authority (e.g. DigiCert), stored at
+  `runs/<id>/merkle_root.tsr`. It turns the snapshot's date from
+  operator-self-asserted into an **independent witness** — the root can't be
+  back-dated past the TSA's signature. `prove` embeds the token in the envelope;
+  `sift verify-proof` checks it inline; new `sift verify-timestamp` checks a
+  snapshot's token directly; all are verifiable with plain `openssl ts -verify`.
+  Non-fatal by design: a TSA outage logs an "unwitnessed" gate row, never blocks
+  the publish. eIDAS-/auditor-recognized format. See `SECURITY.md`.
 
 ## [0.2.0] — Tiered fetch transport
 

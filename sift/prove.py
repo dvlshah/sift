@@ -17,6 +17,7 @@ current and ``as_of`` proofs.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -225,4 +226,17 @@ def build_proof_for_run(
     )
     envelope["included"] = True
     envelope["leaf_source"] = vls.source
+
+    # Attach the external RFC-3161 timestamp token, if this snapshot was witnessed,
+    # so the proof carries its own independent date-witness — verifiable with
+    # `openssl ts -verify` or `sift verify-timestamp`, without trusting sift.
+    tsr = run_dir / "merkle_root.tsr"
+    ts_meta = (read_snapshot(run_dir).get("integrity") or {}).get("timestamp")
+    if tsr.is_file() and ts_meta:
+        envelope["timestamp"] = {
+            "tsa_url": ts_meta.get("tsa_url"),
+            "time": ts_meta.get("time"),
+            "hash_algorithm": ts_meta.get("hash_algorithm", "sha256"),
+            "rfc3161_token_b64": base64.b64encode(tsr.read_bytes()).decode("ascii"),
+        }
     return envelope

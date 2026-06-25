@@ -25,7 +25,7 @@ Your agent's built-in web-fetch gives you:
 ## ✅ With sift
 
 - **Always fresh** — you control the crawl; conditional GETs refetch only what changed, and `changed_since` lets your agent pull just the delta instead of re-reading the corpus
-- **Provable** — content-hash + date on every page; cite the source, hash, and snapshot, read any past snapshot (`as_of`), or emit a self-contained `prove` inclusion proof a third party verifies offline (`python -m sift.verify_proof`) without trusting the server
+- **Provable** — content-hash + date on every page; cite the source, hash, and snapshot, read any past snapshot (`as_of`), or emit a self-contained `prove` inclusion proof a third party verifies offline (`python -m sift.verify_proof`) without trusting the server — optionally anchored by an RFC-3161 timestamp so the date is witnessed by a third party, not self-asserted
 - **Complete & grep-native** — the whole site on disk, not a handful of retrieved snippets
 - **Self-hosted** — any `http(s)` site you can reach, public or internal; your data stays yours
 
