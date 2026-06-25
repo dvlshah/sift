@@ -183,7 +183,7 @@ All other tables and columns are **private** — the reader MUST NOT depend on t
 
 ## 4. MCP read-tool contracts
 
-The seven read tools below are the public surface any MCP gateway exposes. Each is specified as `name(args) → result`.
+The eight read tools below are the public surface any MCP gateway exposes. Each is specified as `name(args) → result`.
 
 ### 4.1 `snapshot_status(index_root: str) → { ... }`
 
@@ -217,6 +217,10 @@ Read-only SQLite SELECT against the **public** columns of `manifest.db` (§3.5).
 ### 4.7 `read_facts(path) → { ... }`
 
 Reads `current/<path>`. `path` MUST start with `facts/`. Returns the parsed JSON object verbatim.
+
+### 4.8 `changed_since(since, path_prefix=null, tier=null, limit=500, offset=0) → { ... }`
+
+Net content delta between `since` and the current published snapshot, read from the index-root `changelog.jsonl` (§2) — **not** `current/`. `since` is a `run_id` (resolved to that run's `completed_at`) or an ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`). The window is `(since_ts, published_ts]`: the upper bound is the **published** snapshot's `completed_at`, so a reader MUST exclude entries from any later (unpublished/degraded) run. Per URL, collapse all in-window entries to one net delta — `old_hash` from the first in-window entry, `new_hash` from the last — and drop any whose net `old_hash == new_hash`. Classify: `added` (net `old_hash` null), `modified` (both present and differ), `removed` (net `new_hash` null). Returns `{ from, to, counts, added, modified, removed, cursor, chain_tip_entry_hash, truncated }` where `cursor` is the current published `run_id`; each list is capped at `limit` per group (newest-first). No published snapshot → `isError: true`.
 
 ## 5. content_hash semantics
 

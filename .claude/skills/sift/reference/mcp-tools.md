@@ -22,13 +22,22 @@ sift-mcp --root R --enable-index              # + write tools
 
 ## Server-shipped instructions
 
-The server sets a server-level `instructions` brief (the agent sees it on connect): *snapshot_status first → grep to locate, read_md to drill (offset/limit), glob/list_dir to explore, read_facts/query_manifest for structured lookups → be token-efficient (everything is capped) → cite content_hash + fetched_at + url.* Multi-index adds "list_indexes first, pass `index=<slug>`, `index="*"` fans out." Write mode adds "index_url then poll index_status until succeeded." This skill's [Query](../SKILL.md#query-a-connected-corpus) section is the expanded version.
+The server sets a server-level `instructions` brief (the agent sees it on connect): *snapshot_status first (remember its run_id; next session changed_since to pull only the delta) → grep to locate, read_md to drill (offset/limit), glob/list_dir to explore, read_facts/query_manifest for structured lookups → be token-efficient (everything is capped) → cite content_hash + fetched_at + url.* Multi-index adds "list_indexes first, pass `index=<slug>`, `index="*"` fans out." Write mode adds "index_url then poll index_status until succeeded." This skill's [Query](../SKILL.md#query-a-connected-corpus) section is the expanded version.
 
 ## Read tools (always available)
 
 ### `snapshot_status`
 **Call first.** Reports published yes/no, `run_id`, gate results, counts by state/tier, version pins, artifact inventory, and suggested entry points. **Never errors** (works pre-publish to diagnose).
 - `index` (multi only, optional; `"*"` fans out).
+
+### `changed_since`
+Net **added / modified / removed** pages since a cursor — the diff feed for staying current without re-reading. Store the `run_id` from `snapshot_status`; next session pass it back to pull only what moved, then `read_md` just those and store the new `cursor`. Read from the hash-chained `changelog.jsonl`; the delta is bounded to the **published** snapshot, so it matches what `read_md` serves (a later unpublished run never leaks in).
+- `since` (required) — a `run_id` (preferred) or ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`).
+- `path_prefix` (optional) — only URLs starting with this prefix.
+- `tier` (optional) — only pages in this tier (e.g. `LIVING`, `FROZEN`).
+- `limit` (default 500) / `offset` (default 0) — per group, newest-first.
+- `index` (multi only, optional; `"*"` fans out).
+- Returns `counts`, the three lists (each item: `url`, `old_hash`/`new_hash`, `tier`, `entry_hash`), a fresh `cursor`, and `chain_tip_entry_hash`. Empty delta with `up_to_date=true` → you're current.
 
 ### `read_md`
 Read one markdown file. Use **after** locating it — `read_md` does not search. Returns YAML frontmatter (url, content_hash, tier, audience, fy_years, anchors) + body.
@@ -83,7 +92,7 @@ Read-only `SELECT`/`WITH` against `manifest.db` (the structured index of every U
 |---|---|---|
 | `read_md`, `read_facts` | **required** | no |
 | `index_url`, `index_status` | **required** | no |
-| `grep_corpus`, `glob_corpus`, `list_dir`, `query_manifest`, `snapshot_status` | optional | yes (slower, noisier — scope when you can) |
+| `grep_corpus`, `glob_corpus`, `list_dir`, `query_manifest`, `snapshot_status`, `changed_since` | optional | yes (slower, noisier — scope when you can) |
 
 ## Write tools (only with `--enable-index`)
 

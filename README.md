@@ -24,7 +24,7 @@ Your agent's built-in web-fetch gives you:
 
 ## ✅ With sift
 
-- **Always fresh** — you control the crawl; conditional GETs refetch only what changed
+- **Always fresh** — you control the crawl; conditional GETs refetch only what changed, and `changed_since` lets your agent pull just the delta instead of re-reading the corpus
 - **Provable** — content-hash + date on every page; cite the source, hash, and snapshot
 - **Complete & grep-native** — the whole site on disk, not a handful of retrieved snippets
 - **Self-hosted** — any `http(s)` site you can reach, public or internal; your data stays yours
