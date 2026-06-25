@@ -14,8 +14,17 @@ All notable changes are documented here. The format follows
   only the delta instead of re-reading the corpus, then storing the new cursor.
   The window is bounded to the **published** snapshot, so transitions from a
   later unpublished/degraded run never leak in (the delta matches what `read_md`
-  serves). Fan-out-eligible in multi-index mode. Brings the read surface to eight
-  tools; the server `instructions` now teach the cursor loop.
+  serves). Fan-out-eligible in multi-index mode; the server `instructions` now
+  teach the cursor loop.
+- **`diff_md` MCP tool** — unified diff of one page between two published
+  snapshots ("the Difference Engine"). Returns only the changed hunks plus both
+  content_hashes and a +/- summary, so an agent reads the lines that moved, not
+  the whole page. Pairs with `changed_since`: which pages moved → which lines.
+- **`as_of` time-travel reads** — `read_md` / `grep_corpus` / `glob_corpus` /
+  `list_dir` / `read_facts` take an optional `as_of` (run_id or ISO-8601
+  timestamp) to read a past **published** snapshot from the retained run history
+  ("Flux Capacitor") — for replay/audit, a stable view across a long task, or
+  inspecting a page before a change. Read surface is now nine tools.
 
 ## [0.2.0] — Tiered fetch transport
 
