@@ -49,6 +49,13 @@ Unified diff of ONE page between two published snapshots — what changed *withi
 
 > **Time-travel (`as_of`).** `read_md`, `grep_corpus`, `glob_corpus`, `list_dir`, and `read_facts` accept an optional `as_of` — a run_id or ISO-8601 UTC timestamp — to read a past **published** snapshot instead of `current/`. Use for replay/audit ("what did this say when…"), a stable view across a long task, or inspecting a page before a change. Output is marked historical; degraded/unpublished runs are refused. `query_manifest` does not support `as_of` (the manifest is current-state only).
 
+### `prove`
+Emits a self-contained cryptographic **inclusion proof** that one page's `content_hash` is committed by the published snapshot's `merkle_root`. Use when an answer must be independently verifiable: the envelope lets a third party confirm the page is in the published corpus **without installing sift or trusting the server** — `python -m sift.verify_proof <file>` (stdlib only). Pairs with `read_md(verify=true)`: that proves the body matches its frontmatter hash; `prove` shows that hash is in the snapshot commitment.
+- `url` (required) — absolute source URL (must match a FRESH/FROZEN manifest row).
+- `as_of` (optional) — prove a past **published** snapshot (run_id or ISO-8601 UTC timestamp).
+- `index` (multi only, **required**).
+- Returns the envelope `{url, content_hash, leaf, run_id, completed_at, merkle_root, scheme, integrity_version, proof:[{sibling, position}], verify_hint, leaf_source}`, or `{included:false}` when the URL isn't in that snapshot (a valid answer, not an error). **Scope:** attests *membership + dated byte-integrity*, **not** non-membership or "current truth" (see SECURITY.md).
+
 ### `read_md`
 Read one markdown file. Use **after** locating it — `read_md` does not search. Returns YAML frontmatter (url, content_hash, tier, audience, fy_years, anchors) + body.
 - `path` (required) — relative to `current/`, e.g. `md/individuals/your-return.md` or `INDEX.md`.

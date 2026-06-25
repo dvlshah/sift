@@ -32,3 +32,14 @@ Out of scope: third-party dependency CVEs (report upstream; we bump on fix), DoS
 - Keep the MCP server **read-only** (omit `--enable-index`) unless you need agent-driven crawls; when enabled, keep `seed.host_allow` tight.
 - Crawl only sources you're authorized to crawl, at a polite `rate_per_sec`.
 - Treat `manifest.db` and the index root as trusted local state; don't expose the stdio MCP server to untrusted network peers without your own auth layer.
+
+## Proof-carrying answers (`prove` / `verify-proof`)
+
+`prove` emits a self-contained Merkle **inclusion proof** that a page's `content_hash` is committed by a published snapshot's `merkle_root`; anyone can re-check it with `python -m sift.verify_proof <file>` (stdlib only, no sift install). Be precise about what the root does and does not attest:
+
+- **It attests** that `(url, content_hash)` was a **member** of the published snapshot identified by `run_id` + `merkle_root`, **dated** by that snapshot — *membership + dated byte-integrity of a published page*. The prover refuses unless the leaf set reconstructed from the run (its md tree, or the manifest as a fallback) reproduces the stored root exactly, so a proof can only ever attest the published commitment.
+- **It does NOT attest** non-membership ("this URL was never indexed"), completeness / non-suppression ("nothing was hidden"), or current truth ("this is still the latest"). A proof is a statement about *one* snapshot at *one* time; "is it current?" is answered operationally by `snapshot_status` + `changed_since`, not cryptographically. An `included: false` result is a statement about *that* snapshot, not a cryptographic non-existence proof.
+
+**Tree convention (for re-implementers).** `leaf = sha256(utf8(url + ":" + content_hash_hex))` where `content_hash_hex` is `content_hash` minus any `sha256:` prefix; interior nodes hash the **concatenated 64-char lowercase-hex strings** of the two children (128 hex chars → utf-8), **not** raw 32-byte digests and **not** double-SHA-256. The leaves are sorted; an odd level duplicates its trailing node. The envelope's `scheme` and `integrity_version` pin this exactly — a verifier that disagrees on either refuses rather than false-passes.
+
+**Accepted posture (v1).** The tree has no RFC-6962 leaf/node domain-separation prefix and is the bitcoin-style construction. CVE-2012-2459 (duplicate-leaf root collision) is **present in the primitive but unreachable**: corpus leaves are unique (`url` is a manifest primary key; a distinct-url-same-leaf collision is second-preimage-hard), and the prover's root self-check rejects any leaf set that doesn't reproduce the stored root. A future `integrity_version` may adopt domain separation; the version pin makes that a clean cutover (old verifiers refuse, never false-pass). Forging an inclusion proof for non-member content, or making `verify-proof` accept a tampered envelope, is high-severity — please report it.

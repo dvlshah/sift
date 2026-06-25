@@ -24,7 +24,19 @@ All notable changes are documented here. The format follows
   `list_dir` / `read_facts` take an optional `as_of` (run_id or ISO-8601
   timestamp) to read a past **published** snapshot from the retained run history
   ("Flux Capacitor") — for replay/audit, a stable view across a long task, or
-  inspecting a page before a change. Read surface is now nine tools.
+  inspecting a page before a change.
+- **`prove` MCP tool + `sift prove` / `sift verify-proof` CLI + a standalone
+  stdlib verifier** — proof-carrying answers. `prove` emits a self-contained
+  Merkle **inclusion proof** that a page's `content_hash` is committed by a
+  published snapshot's `merkle_root`; a third party verifies it offline with
+  `python -m sift.verify_proof <file>` (no sift install, no trust in the server).
+  The prover reconstructs the snapshot's leaf set from the run's md tree —
+  **falling back to the manifest** — and refuses unless it reproduces the stored
+  root exactly, so a proof can only attest the published commitment. Composes
+  with `as_of` (prove a past snapshot). Scope is stated honestly: *membership +
+  dated byte-integrity*, **not** non-membership or "current truth"
+  (`SECURITY.md`). Stress-tested across 33 live indexes (33,227 pages, 0
+  failures). Read surface is now ten tools.
 
 ## [0.2.0] — Tiered fetch transport
 
