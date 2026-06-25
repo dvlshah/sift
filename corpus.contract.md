@@ -183,7 +183,7 @@ All other tables and columns are **private** — the reader MUST NOT depend on t
 
 ## 4. MCP read-tool contracts
 
-The eight read tools below are the public surface any MCP gateway exposes. Each is specified as `name(args) → result`.
+The nine read tools below are the public surface any MCP gateway exposes. Each is specified as `name(args) → result`.
 
 ### 4.1 `snapshot_status(index_root: str) → { ... }`
 
@@ -221,6 +221,12 @@ Reads `current/<path>`. `path` MUST start with `facts/`. Returns the parsed JSON
 ### 4.8 `changed_since(since, path_prefix=null, tier=null, limit=500, offset=0) → { ... }`
 
 Net content delta between `since` and the current published snapshot, read from the index-root `changelog.jsonl` (§2) — **not** `current/`. `since` is a `run_id` (resolved to that run's `completed_at`) or an ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`). The window is `(since_ts, published_ts]`: the upper bound is the **published** snapshot's `completed_at`, so a reader MUST exclude entries from any later (unpublished/degraded) run. Per URL, collapse all in-window entries to one net delta — `old_hash` from the first in-window entry, `new_hash` from the last — and drop any whose net `old_hash == new_hash`. Classify: `added` (net `old_hash` null), `modified` (both present and differ), `removed` (net `new_hash` null). Returns `{ from, to, counts, added, modified, removed, cursor, chain_tip_entry_hash, truncated }` where `cursor` is the current published `run_id`; each list is capped at `limit` per group (newest-first). No published snapshot → `isError: true`.
+
+### 4.9 `diff_md(path, from, to=null, context=3) → { ... }`
+
+Unified diff of `<path>`'s markdown body (frontmatter stripped) between two PUBLISHED run dirs — what changed *within* a page. `from` is a run_id or ISO-8601 UTC timestamp; `to` defaults to the current published snapshot. Reads `runs/<from>/md/<path>` and `runs/<to>/md/<path>` (the retained run history, §2). Returns `{ path, from:{run_id,completed_at,content_hash}, to:{…}, status, added_lines, removed_lines, diff }` where `status ∈ {modified, added, removed, unchanged}` and `diff` is a unified diff with `context` lines, capped. Short-circuits to `unchanged` when the two `content_hash`es match. Either run dir non-published or absent → `isError: true`.
+
+**`as_of` — time-travel reads.** `read_md`, `grep_corpus`, `glob_corpus`, `list_dir`, and `read_facts` (§4.2–4.5, 4.7) accept an optional `as_of` (a run_id or ISO-8601 UTC timestamp resolving to the published run current at that time) that reads `runs/<as_of>/` instead of `current/`. A reader MUST refuse a non-published or absent run, and MUST mark the result as historical. `query_manifest` (§4.6) MUST reject `as_of` — `manifest.db` holds current state only.
 
 ## 5. content_hash semantics
 

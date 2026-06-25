@@ -55,6 +55,7 @@ If you were invoked with **no specific question** (e.g. a bare `/sift`), stop af
 4. `query_manifest` for cross-cutting questions the filesystem can't answer ("pages changed in the last 7 days", "all FRESH pages under parent_guide X"). SELECT/WITH only. Discover schema with `SELECT sql FROM sqlite_master WHERE type='table'`.
 5. `glob_corpus` / `list_dir` to explore the path tree when you don't yet know the shape ("all 2025 forms", what's under `facts/`).
 6. `changed_since(since=<run_id>)` to stay current across sessions — remember the `run_id` from `snapshot_status`, then pull only the added/modified/removed pages since it and `read_md` just those, instead of re-reading. Store the new `cursor` it returns.
+7. `diff_md(path, from=<run_id>)` to read only the *lines* that changed in a page, not the whole page; and `as_of=<run_id>` on `read_md` / `grep_corpus` / `read_facts` to read a past **published** snapshot — replay/audit, a stable view across a long task, or seeing what a page said before a change.
 
 **Output caps — design your call around them:**
 
@@ -66,6 +67,7 @@ If you were invoked with **no specific question** (e.g. a bare `/sift`), stop af
 | `list_dir` | 500 entries | go one directory deeper |
 | `query_manifest` | 500 rows | add `LIMIT` / a tighter `WHERE` |
 | `changed_since` | 500 per group | raise `limit`, page with `offset`, or narrow with `path_prefix` / `tier` |
+| `diff_md` | 16,000 chars | the hunk truncates on huge pages; lower `context` |
 
 **3. Cite with provenance.** Every markdown file leads with YAML frontmatter carrying `url`, `fetched_at`, `content_hash`, `tier`, and anchors. When you state a fact from the corpus, cite the **source url + `content_hash` + `fetched_at`** (and the `run_id` from `snapshot_status`). That dated, hash-pinned citation is sift's whole point — don't drop it on answers that matter.
 
