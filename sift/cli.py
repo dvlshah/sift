@@ -42,6 +42,7 @@ from . import integrity as integrity_mod
 from . import prove as prove_mod
 from . import publish as publish_mod
 from . import sites as sites_mod
+from . import timestamp as timestamp_mod
 from .classify import (
     CLASSIFIER_VERSION,
     DEFAULT_EXCLUDE_PATTERNS,
@@ -1688,13 +1689,74 @@ def verify_proof_cmd(proof_file: Path, expect_root: Optional[str]):
         click.echo(json.dumps({"ok": False, "reason": f"malformed envelope: {e}"}, indent=2))
         sys.exit(2)
     bound_ok = True if expect_root is None else (env["merkle_root"] == expect_root)
-    ok = leaf_ok and root_ok and bound_ok
-    click.echo(json.dumps({
+
+    # If the proof carries an external RFC-3161 timestamp, verify it too (the
+    # independent witness to the root's date). Present-but-invalid fails the proof.
+    ts_ok = None
+    ts = env.get("timestamp")
+    if ts and ts.get("rfc3161_token_b64"):
+        import base64
+        try:
+            token = base64.b64decode(ts["rfc3161_token_b64"])
+            res = timestamp_mod.verify_timestamp(
+                token, env["merkle_root"], ca_file=timestamp_mod.default_ca_file())
+            ts_ok = res["ok"]
+        except Exception:
+            ts_ok = False
+
+    ok = leaf_ok and root_ok and bound_ok and (ts_ok is not False)
+    out = {
         "ok": ok, "url": env.get("url"), "run_id": env.get("run_id"),
         "merkle_root": str(env.get("merkle_root") or "")[:16] + "...",
         "leaf_ok": leaf_ok, "root_ok": root_ok, "root_bound": bound_ok,
-    }, indent=2))
+    }
+    if ts_ok is not None:
+        out["timestamp_ok"] = ts_ok
+        out["witnessed_time"] = (ts or {}).get("time")
+        out["tsa_url"] = (ts or {}).get("tsa_url")
+    click.echo(json.dumps(out, indent=2))
     if not ok:
+        sys.exit(2)
+
+
+@main.command("verify-timestamp")
+@_root_opt
+@_config_opt
+@click.option("--run-id", default=None, help="Defaults to current/ symlink target")
+@click.option("--ca-file", type=click.Path(exists=True, path_type=Path), default=None,
+              help="CA bundle anchoring TSA trust (default: certifi / system).")
+def verify_timestamp_cmd(root: Path, config_path: Optional[Path],
+                         run_id: Optional[str], ca_file: Optional[Path]):
+    """Verify a snapshot's RFC-3161 timestamp — an independent TSA's signature over
+    the merkle_root, witnessing that the root existed at the stated time. Runs
+    `openssl ts -verify`. Exit 0 iff valid, else 2."""
+    _load_cli_config(config_path)
+    if not run_id:
+        cur = paths.current_symlink(root)
+        if not cur.exists():
+            raise click.UsageError("no --run-id and no current/ symlink")
+        run_id = cur.resolve().name
+    snap_path = paths.snapshot_path(root, run_id)
+    if not snap_path.exists():
+        raise click.UsageError(f"snapshot.json missing for run {run_id}")
+    integ = json.loads(snap_path.read_text()).get("integrity") or {}
+    root_hex = integ.get("merkle_root")
+    tsr = paths.run_dir(root, run_id) / "merkle_root.tsr"
+    if not root_hex or not tsr.is_file():
+        click.echo(json.dumps(
+            {"ok": False, "reason": "this snapshot has no RFC-3161 timestamp "
+             "(set [publish].timestamp_tsa_url and re-publish to anchor it)"}, indent=2))
+        sys.exit(2)
+    ca = ca_file if ca_file else timestamp_mod.default_ca_file()
+    res = timestamp_mod.verify_timestamp(tsr.read_bytes(), root_hex, ca_file=ca)
+    click.echo(json.dumps({
+        "ok": res["ok"], "run_id": run_id,
+        "merkle_root": root_hex[:16] + "...",
+        "witnessed_time": res.get("time"), "tsa": res.get("tsa"),
+        "tsa_url": (integ.get("timestamp") or {}).get("tsa_url"),
+        "error": res.get("error"),
+    }, indent=2))
+    if not res["ok"]:
         sys.exit(2)
 
 

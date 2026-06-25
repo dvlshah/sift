@@ -30,6 +30,7 @@ from . import CRAWLER_VERSION, paths
 from . import agent_surface
 from . import facts as facts_mod
 from . import integrity
+from . import timestamp as timestamp_mod
 from ._io import (
     atomic_write_text,
     parse_frontmatter as _parse_frontmatter,
@@ -75,15 +76,22 @@ SHORT_BODY_TOLERANCE_NONFROZEN = 0.05  # fail above 5% short bodies in non-FROZE
 # Set via apply_config from IndexConfig.publish.gpg_key_id.
 GPG_KEY_ID: Optional[str] = None
 
+# Optional RFC-3161 Time-Stamp Authority URL. None = no external timestamp anchor
+# (default). When set, publish() requests a timestamp token over the snapshot's
+# merkle_root from this TSA — an independent witness to the root's date that no
+# one but the TSA controls. Set via apply_config from IndexConfig.publish.
+TIMESTAMP_TSA_URL: Optional[str] = None
+
 
 def apply_config(cfg) -> None:
     """Override gate thresholds from an IndexConfig. Called once at CLI startup."""
-    global COVERAGE_FLOOR, HASH_SAMPLE_RATE, HASH_SAMPLE_MIN, SCHEMA_SAMPLE_SIZE, GPG_KEY_ID
+    global COVERAGE_FLOOR, HASH_SAMPLE_RATE, HASH_SAMPLE_MIN, SCHEMA_SAMPLE_SIZE, GPG_KEY_ID, TIMESTAMP_TSA_URL
     COVERAGE_FLOOR = cfg.publish.coverage_floor
     HASH_SAMPLE_RATE = cfg.publish.hash_sample_rate
     HASH_SAMPLE_MIN = cfg.publish.hash_sample_min
     SCHEMA_SAMPLE_SIZE = cfg.publish.schema_sample_size
     GPG_KEY_ID = getattr(cfg.publish, "gpg_key_id", None)
+    TIMESTAMP_TSA_URL = getattr(cfg.publish, "timestamp_tsa_url", None)
 
 def _seed_rng(run_id: str, label: str) -> random.Random:
     """Deterministic RNG per gate so verification is reproducible."""
@@ -432,6 +440,7 @@ def write_snapshot(
     expected_urls: int,
     gate_results: list[tuple[str, bool, str]],
     status: str,
+    timestamp_info: Optional[dict] = None,
 ) -> Path:
     by_state = counts_by_state(conn)
     by_tier = counts_by_tier(conn)
@@ -477,6 +486,10 @@ def write_snapshot(
             "scheme": "sorted-leaves-bitcoin-style-sha256",
             "changelog_genesis_run": cl_genesis_run,
             "changelog_total_entries": cl_total_entries,
+            # External RFC-3161 timestamp anchor over merkle_root, when configured:
+            # {tsa_url, hash_algorithm, time, token_file}. The token itself lives at
+            # runs/<id>/merkle_root.tsr and is what a verifier checks.
+            **({"timestamp": timestamp_info} if timestamp_info else {}),
         },
         "gates": [
             {"name": name, "passed": ok, "detail": detail}
@@ -536,11 +549,43 @@ def publish(
 
     passed = all(ok for (_, ok, _) in gates)
     now = now_utc()
+    status = "published" if passed else "degraded"
     snap = write_snapshot(
         root, run_id, conn=conn, started_at=started_at, completed_at=now,
-        expected_urls=expected_urls, gate_results=gates,
-        status="published" if passed else "degraded",
+        expected_urls=expected_urls, gate_results=gates, status=status,
     )
+
+    # Optional RFC-3161 external timestamp over the merkle_root. Non-fatal: a TSA
+    # outage logs an "unwitnessed" gate row rather than failing the publish. The
+    # token (an independent witness to the root's date — neither sift nor the
+    # reader controls the TSA) lands at runs/<id>/merkle_root.tsr; its metadata
+    # goes in integrity.timestamp.
+    ts_info: Optional[dict] = None
+    if TIMESTAMP_TSA_URL:
+        run_dir = paths.run_dir(root, run_id)
+        root_hex = (json.loads(snap.read_text()).get("integrity") or {}).get("merkle_root")
+        if not root_hex:
+            gates.append(("rfc3161_timestamp", False, "no merkle_root to timestamp (empty corpus)"))
+        else:
+            try:
+                token = timestamp_mod.request_timestamp(root_hex, TIMESTAMP_TSA_URL)
+                (run_dir / "merkle_root.tsr").write_bytes(token)
+                meta = timestamp_mod.parse_timestamp(token)
+                ts_info = {
+                    "tsa_url": TIMESTAMP_TSA_URL,
+                    "hash_algorithm": meta.get("hash_algorithm", "sha256"),
+                    "time": meta.get("time"),
+                    "token_file": "merkle_root.tsr",
+                }
+                gates.append(("rfc3161_timestamp", True,
+                              f"witnessed by {TIMESTAMP_TSA_URL} at {meta.get('time')}"))
+            except Exception as e:  # noqa: BLE001 — non-fatal by design
+                gates.append(("rfc3161_timestamp", False, f"timestamp failed (non-fatal): {e}"))
+        snap = write_snapshot(
+            root, run_id, conn=conn, started_at=started_at, completed_at=now,
+            expected_urls=expected_urls, gate_results=gates, status=status,
+            timestamp_info=ts_info,
+        )
 
     # Optional GPG detach-signature on the snapshot. Non-fatal — if the
     # configured key isn't available or gpg isn't installed, log via gates
@@ -552,11 +597,11 @@ def publish(
             sig is not None,
             f"signed with {GPG_KEY_ID}" if sig else f"gpg sign failed (key {GPG_KEY_ID})",
         ))
-        # Re-write snapshot.json with the gate row recorded
+        # Re-write snapshot.json with the gate row recorded (carry the timestamp).
         snap = write_snapshot(
             root, run_id, conn=conn, started_at=started_at, completed_at=now,
-            expected_urls=expected_urls, gate_results=gates,
-            status="published" if passed else "degraded",
+            expected_urls=expected_urls, gate_results=gates, status=status,
+            timestamp_info=ts_info,
         )
         # If we re-wrote, re-sign so signature matches the final bytes
         if sig is not None:

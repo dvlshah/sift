@@ -56,6 +56,9 @@ hash_sample_rate   = 0.01   # 1% of md files re-hashed each publish
 hash_sample_min    = 25     # ...but never fewer than this
 schema_sample_size = 50     # files checked for structural sanity
 # gpg_key_id = "..."        # set => gpg --detach-sign snapshot.json
+# timestamp_tsa_url = "http://timestamp.digicert.com"  # set => RFC-3161 timestamp
+#                            # over merkle_root each publish (independent date witness;
+#                            # non-fatal on TSA outage). See SECURITY.md.
 
 # ---- Seed-time URL filtering -----------------------------------------------
 [seed]

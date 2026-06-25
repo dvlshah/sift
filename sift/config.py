@@ -134,6 +134,11 @@ class PublishConfig:
     # Set to a key id (long form or fingerprint) when you want audit-grade
     # snapshot integrity.
     gpg_key_id: Optional[str] = None
+    # Optional RFC-3161 Time-Stamp Authority URL (e.g. http://timestamp.digicert.com).
+    # None disables external timestamping. When set, each publish anchors the
+    # snapshot's merkle_root to this independent TSA — a third party's witness to
+    # the root's date, verifiable with `openssl ts -verify`.
+    timestamp_tsa_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -330,6 +335,7 @@ def load_config(path: Optional[Path] = None) -> IndexConfig:
             hash_sample_min=int(publish_raw.get("hash_sample_min", 25)),
             schema_sample_size=int(publish_raw.get("schema_sample_size", 50)),
             gpg_key_id=publish_raw.get("gpg_key_id") or None,
+            timestamp_tsa_url=publish_raw.get("timestamp_tsa_url") or None,
         ),
         seed=SeedConfig(
             host_allow=tuple(seed_raw.get("host_allow", ("www.ato.gov.au",))),

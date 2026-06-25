@@ -54,7 +54,7 @@ Emits a self-contained cryptographic **inclusion proof** that one page's `conten
 - `url` (required) — absolute source URL (must match a FRESH/FROZEN manifest row).
 - `as_of` (optional) — prove a past **published** snapshot (run_id or ISO-8601 UTC timestamp).
 - `index` (multi only, **required**).
-- Returns the envelope `{url, content_hash, leaf, run_id, completed_at, merkle_root, scheme, integrity_version, proof:[{sibling, position}], verify_hint, leaf_source}`, or `{included:false}` when the URL isn't in that snapshot (a valid answer, not an error). **Scope:** attests *membership + dated byte-integrity*, **not** non-membership or "current truth" (see SECURITY.md).
+- Returns the envelope `{url, content_hash, leaf, run_id, completed_at, merkle_root, scheme, integrity_version, proof:[{sibling, position}], verify_hint, leaf_source}`, or `{included:false}` when the URL isn't in that snapshot (a valid answer, not an error). When the snapshot was timestamped (`[publish].timestamp_tsa_url`), the envelope also carries `timestamp:{tsa_url, time, rfc3161_token_b64}` — an independent RFC-3161 witness to the root's date that `verify-proof` checks. **Scope:** attests *membership + dated byte-integrity*, **not** non-membership or "current truth" (see SECURITY.md).
 
 ### `read_md`
 Read one markdown file. Use **after** locating it — `read_md` does not search. Returns YAML frontmatter (url, content_hash, tier, audience, fy_years, anchors) + body.

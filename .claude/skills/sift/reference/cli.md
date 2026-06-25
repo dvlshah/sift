@@ -109,6 +109,22 @@ Walk `changelog.jsonl`, verify each entry's `prev_hash` + `entry_hash`. Any tamp
 ### `sift verify-signature`
 GPG-verify the `snapshot.json` detach signature (only meaningful if `[publish].gpg_key_id` is set). `--run-id` defaults to `current/` target.
 
+## Proof-carrying answers
+
+### `sift prove --url URL`
+Emit a self-contained Merkle **inclusion proof** that `url`'s `content_hash` is committed by a published snapshot's `merkle_root`. Refuses unless the run's reconstructed leaf set reproduces the stored root. Carries the RFC-3161 token when the snapshot was timestamped.
+- `--url TEXT` (required) — absolute source URL of an indexed page.
+- `--run-id TEXT` — run to prove against; defaults to `current/` target (composes with a past run for `as_of`-style proofs).
+- `--out PATH` — write the envelope here (default: stdout).
+
+### `sift verify-proof FILE`
+Verify a proof envelope: recompute the leaf, fold the proof to the root, check the root binding, and — if the envelope carries an RFC-3161 `timestamp` — verify that token against the root too. **Exit 0 iff all pass; exit 2 otherwise.** No index needed; `python -m sift.verify_proof FILE` is the stdlib-only equivalent for third parties.
+
+### `sift verify-timestamp`
+Verify a snapshot's RFC-3161 timestamp (`runs/<id>/merkle_root.tsr`) against its `merkle_root` via `openssl ts -verify` — an independent TSA's witness that the root existed at the stated time. **Exit 0 iff valid, exit 2 otherwise** (including when the snapshot has no timestamp).
+- `--run-id TEXT` — defaults to `current/` target.
+- `--ca-file PATH` — CA bundle anchoring TSA trust (default: certifi / system).
+
 ## Read access
 
 ### `sift manifest-query SQL`
