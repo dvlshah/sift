@@ -247,7 +247,7 @@ class TestServerWiring:
         descs = mcp_server._tool_descriptors()
         names = {t.name for t in descs}
         assert names == {
-            "snapshot_status", "changed_since", "diff_md",
+            "snapshot_status", "changed_since", "diff_md", "prove",
             "read_md", "grep_corpus", "glob_corpus",
             "list_dir", "query_manifest", "read_facts",
         }

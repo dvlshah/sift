@@ -39,6 +39,7 @@ from . import CRAWLER_VERSION, paths
 from . import classify as classify_mod
 from . import decide as decide_mod
 from . import integrity as integrity_mod
+from . import prove as prove_mod
 from . import publish as publish_mod
 from . import sites as sites_mod
 from .classify import (
@@ -1610,6 +1611,89 @@ def verify_snapshot_cmd(root: Path, config_path: Optional[Path], run_id: Optiona
             indent=2,
         )
     )
+    if not ok:
+        sys.exit(2)
+
+
+@main.command("prove")
+@_root_opt
+@_config_opt
+@click.option("--url", required=True, help="Absolute source URL of an indexed page to prove.")
+@click.option("--run-id", default=None, help="Run to prove against. Defaults to current/ target.")
+@click.option("--out", "out_path", type=click.Path(path_type=Path), default=None,
+              help="Write the proof envelope here. Default: stdout.")
+def prove_cmd(root: Path, config_path: Optional[Path], url: str,
+              run_id: Optional[str], out_path: Optional[Path]):
+    """Emit a self-contained Merkle-inclusion proof that URL's content_hash is
+    committed by a published snapshot's merkle_root. Verify it offline with
+    `sift verify-proof <file>` or `python -m sift.verify_proof <file>` — no sift
+    install needed. Exit 0 on success; exit 2 if the URL is absent, the snapshot
+    is pre-integrity-v1, or the md-reconstructed root != the stored root."""
+    _load_cli_config(config_path)
+    if run_id:
+        run_dir = paths.run_dir(root, run_id)
+    else:
+        cur = paths.current_symlink(root)
+        if not cur.exists():
+            raise click.UsageError("no --run-id and no current/ symlink")
+        run_dir = cur.resolve()
+    if not run_dir.is_dir():
+        raise click.UsageError(f"run dir not found: {run_dir}")
+    try:
+        result = prove_mod.build_proof_for_run(
+            run_dir, url, manifest_path=paths.manifest_path(root))
+    except prove_mod.ProofError as e:
+        click.echo(json.dumps({"ok": False, "reason": str(e)}, indent=2))
+        sys.exit(2)
+    if not result.get("included", False):
+        click.echo(json.dumps(result, indent=2, sort_keys=True))
+        sys.exit(2)
+    body = json.dumps(result, indent=2, sort_keys=True)
+    if out_path:
+        out_path.write_text(body + "\n")
+        click.echo(json.dumps(
+            {"ok": True, "wrote": str(out_path), "run_id": result["run_id"]}, indent=2))
+    else:
+        click.echo(body)
+
+
+@main.command("verify-proof")
+@click.argument("proof_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--expect-root", default=None,
+              help="Assert the envelope's merkle_root equals this out-of-band value "
+                   "(e.g. from snapshot_status), binding the proof to a trusted root.")
+def verify_proof_cmd(proof_file: Path, expect_root: Optional[str]):
+    """Verify a proof envelope is internally consistent: recompute the leaf from
+    url+content_hash, fold the path, confirm == the embedded merkle_root. Uses
+    ONLY the envelope — never reads the index, so a tampered index can't bless a
+    bad proof. Exit 0 iff valid, else 2."""
+    try:
+        env = json.loads(proof_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        click.echo(json.dumps({"ok": False, "reason": f"unreadable proof: {e}"}, indent=2))
+        sys.exit(2)
+    if env.get("integrity_version") != integrity_mod.INTEGRITY_VERSION:
+        click.echo(json.dumps(
+            {"ok": False, "reason": f"unsupported integrity_version "
+             f"{env.get('integrity_version')!r}; this sift implements "
+             f"{integrity_mod.INTEGRITY_VERSION!r}"}, indent=2))
+        sys.exit(2)
+    try:
+        leaf = integrity_mod.leaf_hash(
+            env["url"], str(env["content_hash"]).removeprefix("sha256:"))
+        leaf_ok = leaf == env["leaf"]
+        root = integrity_mod.fold_proof(env["leaf"], env["proof"])
+        root_ok = root == env["merkle_root"]
+    except (KeyError, ValueError, TypeError) as e:
+        click.echo(json.dumps({"ok": False, "reason": f"malformed envelope: {e}"}, indent=2))
+        sys.exit(2)
+    bound_ok = True if expect_root is None else (env["merkle_root"] == expect_root)
+    ok = leaf_ok and root_ok and bound_ok
+    click.echo(json.dumps({
+        "ok": ok, "url": env.get("url"), "run_id": env.get("run_id"),
+        "merkle_root": str(env.get("merkle_root") or "")[:16] + "...",
+        "leaf_ok": leaf_ok, "root_ok": root_ok, "root_bound": bound_ok,
+    }, indent=2))
     if not ok:
         sys.exit(2)
 

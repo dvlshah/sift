@@ -183,7 +183,7 @@ All other tables and columns are **private** — the reader MUST NOT depend on t
 
 ## 4. MCP read-tool contracts
 
-The nine read tools below are the public surface any MCP gateway exposes. Each is specified as `name(args) → result`.
+The ten read tools below are the public surface any MCP gateway exposes. Each is specified as `name(args) → result`.
 
 ### 4.1 `snapshot_status(index_root: str) → { ... }`
 
@@ -227,6 +227,14 @@ Net content delta between `since` and the current published snapshot, read from 
 Unified diff of `<path>`'s markdown body (frontmatter stripped) between two PUBLISHED run dirs — what changed *within* a page. `from` is a run_id or ISO-8601 UTC timestamp; `to` defaults to the current published snapshot. Reads `runs/<from>/md/<path>` and `runs/<to>/md/<path>` (the retained run history, §2). Returns `{ path, from:{run_id,completed_at,content_hash}, to:{…}, status, added_lines, removed_lines, diff }` where `status ∈ {modified, added, removed, unchanged}` and `diff` is a unified diff with `context` lines, capped. Short-circuits to `unchanged` when the two `content_hash`es match. Either run dir non-published or absent → `isError: true`.
 
 **`as_of` — time-travel reads.** `read_md`, `grep_corpus`, `glob_corpus`, `list_dir`, and `read_facts` (§4.2–4.5, 4.7) accept an optional `as_of` (a run_id or ISO-8601 UTC timestamp resolving to the published run current at that time) that reads `runs/<as_of>/` instead of `current/`. A reader MUST refuse a non-published or absent run, and MUST mark the result as historical. `query_manifest` (§4.6) MUST reject `as_of` — `manifest.db` holds current state only.
+
+### 4.10 `prove(url, as_of=null) → { envelope }`
+
+Emits a self-contained Merkle **inclusion proof** that `(url, content_hash)` is committed by a published snapshot's `merkle_root`. Resolves the run (current, or `as_of` a published run), reconstructs the leaf set from the run's md tree — falling back to the manifest's FRESH/FROZEN rows — and **refuses unless the reconstructed leaves reproduce the stored `merkle_root` exactly** (so a proof can only attest the published commitment). Returns `{ url, content_hash, leaf, run_id, completed_at, merkle_root, scheme, integrity_version, leaf_count, proof:[{sibling, position}], verify_hint, included:true, leaf_source }`, or `{ included:false, … }` when the URL isn't in that snapshot (a valid answer, not a proof).
+
+A verifier MUST use ONLY the envelope: recompute `leaf = sha256(utf8(url + ":" + content_hash_hex))` (content_hash minus `sha256:`), fold the path bottom→top (parent = `sha256(utf8(sibling+node))` if `position=="left"` else `sha256(utf8(node+sibling))` — **hex-string concat of 64-char digests, NOT raw bytes, NOT double-SHA**), and confirm it equals `merkle_root`. Refuse on `integrity_version`/`scheme` mismatch rather than false-pass.
+
+**Proof scope (normative).** The root attests **membership + dated byte-integrity** of a published page — `(url, content_hash)` was in the snapshot identified by `run_id`/`merkle_root`. It does **not** attest non-membership, completeness/non-suppression, or current value; `included:false` is a statement about *this* snapshot, not a non-existence proof. The tree is bitcoin-style (sorted leaves, odd-node duplication, no RFC-6962 domain-separation prefix); CVE-2012-2459 is present in the primitive but unreachable given unique corpus leaves (`url` PK) + the root self-check. See `SECURITY.md` for the full posture.
 
 ## 5. content_hash semantics
 

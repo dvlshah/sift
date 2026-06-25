@@ -74,6 +74,89 @@ def compute_corpus_root(rows: Iterable[tuple[str, str]]) -> tuple[Optional[str],
     return merkle_root(leaves), len(leaves)
 
 
+# ---- Inclusion proofs ------------------------------------------------------
+# A proof of membership in the SAME tree merkle_root builds. Generation and the
+# fold (verification) reuse merkle_root's exact rules — sort, odd-node
+# duplication, hex-string-concat parent — so a proof can never drift from the
+# root it's meant to reproduce. The standalone verifier (sift/verify_proof.py)
+# reimplements `fold_proof` in pure stdlib; keep the two byte-identical.
+
+
+def merkle_proof(leaves: Iterable[str], target: str) -> Optional[list[dict]]:
+    """Inclusion path for ``target`` in the tree :func:`merkle_root` builds.
+
+    Returns an ordered list of ``{"sibling": hex, "position": "left"|"right"}``
+    bottom→top (``position`` is the side the SIBLING sits on relative to the
+    running hash), or ``None`` if ``target`` is not among ``leaves``. Mirrors
+    merkle_root exactly: sort the hex leaves; an odd level duplicates its
+    trailing node (so the orphan's sibling is itself, position ``"right"``);
+    ``parent = sha256_hex((left_hex + right_hex).encode())``.
+    """
+    level = sorted(leaves)
+    if target not in level:
+        return None
+    idx = level.index(target)
+    path: list[dict] = []
+    while len(level) > 1:
+        if len(level) % 2 == 1:              # duplicate the trailing node
+            level = level + [level[-1]]
+        sib = idx ^ 1
+        path.append({
+            "sibling": level[sib],
+            "position": "right" if idx % 2 == 0 else "left",
+        })
+        level = [
+            sha256_hex((level[i] + level[i + 1]).encode("utf-8"))
+            for i in range(0, len(level), 2)
+        ]
+        idx //= 2
+    return path
+
+
+def fold_proof(leaf: str, proof: list[dict]) -> str:
+    """Recompute a root from a leaf + inclusion path. The reference fold the
+    standalone verifier reimplements in stdlib; shared so sift's verify-proof
+    and the external script agree on one definition. An empty proof (single-leaf
+    corpus) returns ``leaf`` unchanged — correct, since ``merkle_root([x]) == x``."""
+    node = leaf
+    for step in proof:
+        sib = step["sibling"]
+        if step["position"] == "left":
+            node = sha256_hex((sib + node).encode("utf-8"))
+        else:
+            node = sha256_hex((node + sib).encode("utf-8"))
+    return node
+
+
+def build_proof_envelope(
+    *, url: str, content_hash_hex: str, leaf: str, run_id: str,
+    completed_at: Optional[str], merkle_root: str, leaf_count: int,
+    scheme: str, integrity_version: str, proof: list[dict],
+) -> dict:
+    """Assemble the canonical, self-contained proof envelope — the single
+    definition shared by the MCP ``prove`` tool and ``sift prove`` so they can't
+    drift on fields, ordering, or the ``sha256:`` prefix. A holder of this
+    envelope can verify membership with nothing but the envelope + stdlib."""
+    return {
+        "url": url,
+        "content_hash": "sha256:" + content_hash_hex,
+        "leaf": leaf,
+        "run_id": run_id,
+        "completed_at": completed_at,
+        "merkle_root": merkle_root,
+        "scheme": scheme,
+        "integrity_version": integrity_version,
+        "leaf_count": leaf_count,
+        "proof": proof,
+        "verify_hint": (
+            "leaf = sha256(url + ':' + content_hash_hex); fold proof bottom->top, "
+            "parent = sha256(sibling+node) if position=left else sha256(node+sibling); "
+            "assert == merkle_root. Standalone: python -m sift.verify_proof <file>. "
+            "Hashes are hex of UTF-8 bytes; content_hash_hex is content_hash minus 'sha256:'."
+        ),
+    }
+
+
 # ---- Chained log -----------------------------------------------------------
 
 # The keys we strip before hashing — they're either added by chain_hash itself

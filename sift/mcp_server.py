@@ -1,10 +1,11 @@
 """MCP server exposing a published index as task-shaped tools for grep-first agents.
 
-Nine read-only tools, all output-capped:
+Ten read-only tools, all output-capped:
 
     snapshot_status — published yes/no, gates, counts, artifact inventory (works pre-publish)
     changed_since   — net added/modified/removed pages since a cursor (the diff feed)
     diff_md         — unified diff of one page between two published snapshots
+    prove           — self-contained Merkle inclusion proof that a page is in the snapshot
     read_md         — read one md file (with optional offset/limit, optional verify)
     grep_corpus     — regex search over md/ (returns file:line:context)
     glob_corpus     — list md files matching a glob (e.g. forms-and-instructions/**/2025*)
@@ -63,7 +64,7 @@ import mcp.types as mcp_types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from . import __version__, paths
+from . import __version__, paths, prove
 from ._io import parse_frontmatter, read_snapshot, split_frontmatter
 from .manifest import open_manifest_ro
 from .registry import (
@@ -1003,6 +1004,30 @@ def tool_diff_md(
     return _ok(json.dumps(out, indent=2, default=str))
 
 
+def tool_prove(
+    index_root: Path, url: str, *, as_of: Optional[str] = None,
+) -> mcp_types.CallToolResult:
+    """Emit a self-contained Merkle inclusion proof for one URL. Resolves the
+    run dir (current or as_of) in the MCP idiom, then delegates to the
+    self-checking prover — which refuses (never fabricates) if the run's md tree
+    doesn't reproduce its stored root."""
+    if as_of:
+        run_dir, err = _resolve_as_of(index_root, as_of)
+        if err is not None:
+            return err
+        assert run_dir is not None
+    else:
+        run_dir = paths.published_run_dir(index_root)
+        if run_dir is None:
+            return _err("No published snapshot; nothing to prove. Call snapshot_status.")
+    try:
+        result = prove.build_proof_for_run(
+            run_dir, url, manifest_path=paths.manifest_path(index_root))
+    except prove.ProofError as e:
+        return _err(str(e))
+    return _ok(json.dumps(result, indent=2, default=str))
+
+
 def tool_read_facts(root: Path, path: str) -> mcp_types.CallToolResult:
     p = _safe_path(root, path)
     if p is None or not p.exists():
@@ -1872,6 +1897,38 @@ def _tool_descriptors(*, include_index: bool = False,
             },
             annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
         ),
+        mcp_types.Tool(
+            name="prove",
+            description=(
+                "Emits a self-contained cryptographic proof that ONE page's "
+                "content_hash is committed by the published snapshot's Merkle "
+                "root. Use when an answer must be independently verifiable — the "
+                "envelope lets a third party confirm the page belongs to the "
+                "published corpus WITHOUT installing sift or trusting this server "
+                "(re-hash the leaf, fold the path, compare to merkle_root).\n"
+                "Pairs with read_md(verify=true): that proves the body matches its "
+                "frontmatter hash; prove shows that hash is in the snapshot "
+                "commitment. `url` is the absolute source URL (as in frontmatter "
+                "`url`). Optional `as_of` proves a past published snapshot.\n"
+                "Returns a JSON envelope (or `included:false` if the URL isn't in "
+                "that snapshot — a valid answer, not an error). Save it and run "
+                "`python -m sift.verify_proof <file>` to check it offline."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": ("Absolute http(s) URL of an indexed page "
+                                        "(must match a manifest row in FRESH or "
+                                        "FROZEN state)."),
+                    },
+                    "as_of": _AS_OF_PARAM,
+                },
+            },
+            annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
+        ),
     ])
     # Time-travel ("Flux Capacitor"): add the optional `as_of` cursor to the five
     # content read tools. query_manifest is excluded — manifest.db is current
@@ -1902,7 +1959,7 @@ def _tool_descriptors(*, include_index: bool = False,
     #     handles the multi-call merge and adds a per-index header).
     #   * list_indexes — not retrofitted; it's the discovery tool itself.
     if multi:
-        index_required = {"read_md", "read_facts", "diff_md", "index_url", "index_status"}
+        index_required = {"read_md", "read_facts", "diff_md", "prove", "index_url", "index_status"}
         skip = {"list_indexes"}
         retrofitted: list[mcp_types.Tool] = []
         for t in tools:
@@ -2329,6 +2386,16 @@ def build_server(
                 to=arguments.get("to"),
                 context=int(arguments.get("context", 3)),
             )
+
+        # prove emits a proof against the index-root snapshot (current or as_of),
+        # like changed_since/diff_md — root-level, not current/-scoped.
+        if name == "prove":
+            p_url = arguments.get("url")
+            if not isinstance(p_url, str) or not p_url:
+                return _err("prove requires `url` — the absolute source URL of an indexed page.")
+            if target is None:                 # multi-mode needs a specific index
+                return _err("prove needs a specific index in multi-index mode — pass index=<slug>.")
+            return tool_prove(target, p_url, as_of=arguments.get("as_of"))
 
         def _scoped_call(idx_root: Path) -> mcp_types.CallToolResult:
             # "Flux Capacitor": as_of re-points the read root from current/ to a
