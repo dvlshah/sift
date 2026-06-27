@@ -465,6 +465,38 @@ def write_snapshot(
         # No changelog (or empty) — current run is about to start it
         cl_genesis_run = run_id
 
+    # ---- Coverage, reported as two explicit fractions (never one ambiguous %) ----
+    # indexed_fraction  = content we actually hold (FRESH/FROZEN rows carrying a
+    #   content_hash — identical to the Merkle leaf_count) / expected.
+    # resolved_fraction = lifecycle-closed / expected; this ADDS terminal rows that
+    #   carry no content (GONE tombstones, browser-skips).
+    # A consumer rendering a "coverage %" badge MUST use indexed_fraction:
+    # resolved_fraction can read ~1.0 on a corpus that holds far fewer pages (e.g.
+    # a stale seed full of 404 -> GONE), which is the overclaim we refuse to ship.
+    # GONE/SKIPPED carry no content_hash, so they can never reach indexed_fraction
+    # by construction — the honest number is robust to the terminal-state set.
+    # CAVEAT: the denominator is `expected_urls` (the manifest/seed total), NOT the
+    # discovery-witness-backed `discovered_in_scope` of engine-hardening.md §4.1.
+    # So indexed_fraction is honest about LIFECYCLE (GONE/SKIPPED excluded) but not
+    # yet about discovery completeness — both fractions share that open overclaim.
+    # `denominator_basis` records this so a future §4.1 witness-backed metric can't
+    # be mistaken for this one.
+    terminal_count = sum(
+        n for state, n in by_state.items() if _is_terminal_state(state)
+    )
+    coverage = {
+        "expected_urls": expected_urls,
+        "denominator_basis": "manifest_total",
+        "indexed_count": leaf_count,
+        "resolved_count": terminal_count,
+        "indexed_fraction": (
+            round(leaf_count / expected_urls, 4) if expected_urls else None
+        ),
+        "resolved_fraction": (
+            round(terminal_count / expected_urls, 4) if expected_urls else None
+        ),
+    }
+
     snap = {
         "run_id": run_id,
         "started_at": started_at,
@@ -473,6 +505,7 @@ def write_snapshot(
         "expected_urls": expected_urls,
         "counts_by_state": by_state,
         "counts_by_tier": by_tier,
+        "coverage": coverage,
         "versions": {
             "crawler": CRAWLER_VERSION,
             "extractor": EXTRACTOR_VERSION,
