@@ -71,7 +71,7 @@ class BrowserFetchError(Exception):
 def _install_hint() -> str:
     return (
         "playwright is not installed. Install with:\n"
-        "    pip install 'sift[browser]' && python -m playwright install chromium"
+        "    pip install 'sift-engine[browser]' && python -m playwright install chromium"
     )
 
 

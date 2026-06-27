@@ -333,7 +333,7 @@ acquire and still pass the existing semaphore test.
 ```python
 class BrowserNotInstalledError(ImportError):
     """Raised when `import crawl4ai` fails. Message points at:
-        pip install 'sift[browser]' && python -m playwright install chromium
+        pip install 'sift-engine[browser]' && python -m playwright install chromium
     """
 
 class BrowserFetchError(Exception):

@@ -39,7 +39,10 @@ Phase 2: async fetch per `plan.jsonl`. Idempotent; resumes via `fetch.log`.
 - `--concurrency N` — in-flight requests (default: `crawl.concurrency`).
 - `--decisions TEXT` — only fetch these decisions (default `FETCH`, `FETCH_CONDITIONAL`).
 - `--tier TEXT` — only these tiers (repeatable).
-- `--firecrawl-fallback` — on 401/403, escalate via Firecrawl `/v2/scrape` (costs credits, capped by `[crawl.firecrawl].max_credits_per_run`; needs `FIRECRAWL_API_KEY`).
+- `--impersonate-fallback` — tier-2 escalation: on a fingerprint/bot block (403/429/503), a TLS reset, or a thin 200, re-fetch with a real browser's TLS fingerprint via curl_cffi. Free, self-hosted, no browser; runs before any Firecrawl tier. Needs `pip install 'sift-engine[impersonate]'`. (Also config: `[crawl.impersonate].enabled`.)
+- `--firecrawl-fallback` — paid last resort: escalate via Firecrawl `/v2/scrape` (costs credits, capped by `[crawl.firecrawl].max_credits_per_run`; needs `FIRECRAWL_API_KEY`). Never fires on thin content unless `[crawl.firecrawl].escalate_on_thin=true`.
+
+The escalation ladder is `native httpx → curl_cffi (--impersonate-fallback) → browser ([browser].enabled) → Firecrawl (--firecrawl-fallback)`, each tried only when the previous can't serve good content. After a host repeatedly blocks native, its later URLs skip native entirely.
 
 ### `sift extract`
 Phase 3: HTML→markdown (trafilatura) / PDF→text (pypdf) → `content_hash`.
@@ -67,7 +70,8 @@ Orchestrates plan → fetch → extract → commit → publish with per-phase ti
 - `--tier TEXT` — only these tiers (repeatable).
 - `--coverage-base MODE` — base the G3 coverage fraction on something other than total manifest rows. `planned` = `min(--limit, total)`; `filtered-tiers` = count of `--tier` rows. **Use this on any intentional capped/tier-scoped crawl** or G3 spuriously degrades.
 - `--run-id TEXT` — mint the run-id up front (must be unique; the runs-table PK). Used by `index_url`.
-- `--firecrawl-fallback` — as `fetch`.
+- `--impersonate-fallback` — as `fetch` (free tier-2 TLS impersonation).
+- `--firecrawl-fallback` — as `fetch` (paid last resort).
 - `--only-urls PATH` — scope the plan to URLs in a file; rows outside the set are SKIPPED entirely (not planned, not fetched). For targeted backfills — adding one URL won't trigger a full-corpus expansion.
 
 **Exit codes** (for cron/CI): `0` published (gates passed, `current/` flipped) · `1` pipeline error (crashed pre-publish) · `2` degraded (a gate failed; `snapshot.json` written `status=degraded`, `current/` unchanged).
@@ -104,6 +108,22 @@ Walk `changelog.jsonl`, verify each entry's `prev_hash` + `entry_hash`. Any tamp
 
 ### `sift verify-signature`
 GPG-verify the `snapshot.json` detach signature (only meaningful if `[publish].gpg_key_id` is set). `--run-id` defaults to `current/` target.
+
+## Proof-carrying answers
+
+### `sift prove --url URL`
+Emit a self-contained Merkle **inclusion proof** that `url`'s `content_hash` is committed by a published snapshot's `merkle_root`. Refuses unless the run's reconstructed leaf set reproduces the stored root. Carries the RFC-3161 token when the snapshot was timestamped.
+- `--url TEXT` (required) — absolute source URL of an indexed page.
+- `--run-id TEXT` — run to prove against; defaults to `current/` target (composes with a past run for `as_of`-style proofs).
+- `--out PATH` — write the envelope here (default: stdout).
+
+### `sift verify-proof FILE`
+Verify a proof envelope: recompute the leaf, fold the proof to the root, check the root binding, and — if the envelope carries an RFC-3161 `timestamp` — verify that token against the root too. **Exit 0 iff all pass; exit 2 otherwise.** No index needed; `python -m sift.verify_proof FILE` is the stdlib-only equivalent for third parties.
+
+### `sift verify-timestamp`
+Verify a snapshot's RFC-3161 timestamp (`runs/<id>/merkle_root.tsr`) against its `merkle_root` via `openssl ts -verify` — an independent TSA's witness that the root existed at the stated time. **Exit 0 iff valid, exit 2 otherwise** (including when the snapshot has no timestamp).
+- `--run-id TEXT` — defaults to `current/` target.
+- `--ca-file PATH` — CA bundle anchoring TSA trust (default: certifi / system).
 
 ## Read access
 

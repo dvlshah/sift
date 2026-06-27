@@ -1,14 +1,22 @@
 """MCP server exposing a published index as task-shaped tools for grep-first agents.
 
-Seven read-only tools, all output-capped:
+Ten read-only tools, all output-capped:
 
     snapshot_status — published yes/no, gates, counts, artifact inventory (works pre-publish)
+    changed_since   — net added/modified/removed pages since a cursor (the diff feed)
+    diff_md         — unified diff of one page between two published snapshots
+    prove           — self-contained Merkle inclusion proof that a page is in the snapshot
     read_md         — read one md file (with optional offset/limit, optional verify)
     grep_corpus     — regex search over md/ (returns file:line:context)
     glob_corpus     — list md files matching a glob (e.g. forms-and-instructions/**/2025*)
     list_dir        — directory listing under current/ or current/md/
     query_manifest  — read-only SELECT against manifest.db
     read_facts      — read one facts/*.json file (with schema validation hint)
+
+The five content read tools (read_md / grep_corpus / glob_corpus / list_dir /
+read_facts) also accept an optional ``as_of`` (run_id or ISO timestamp) to read
+a PAST published snapshot instead of current — time-travel reads over the
+retained, content-addressed run history.
 
 Two write/status tools are exposed ONLY when launched with --enable-index
 (off by default, so the server is read-only unless explicitly opted in):
@@ -37,6 +45,7 @@ Design notes (per claude-agent-sdk tool best practices):
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import re
 import shutil
@@ -55,7 +64,7 @@ import mcp.types as mcp_types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from . import __version__, paths
+from . import __version__, paths, prove
 from ._io import parse_frontmatter, read_snapshot, split_frontmatter
 from .manifest import open_manifest_ro
 from .registry import (
@@ -75,6 +84,22 @@ MAX_GREP_LINE_CHARS = 240
 MAX_GLOB_RESULTS = 500
 MAX_LS_ENTRIES = 500
 MAX_QUERY_ROWS = 500
+MAX_CHANGED_ENTRIES = 500       # per group (added/modified/removed) in changed_since
+MAX_DIFF_CHARS = 16_000         # unified-diff output cap for diff_md
+
+# Shared schema fragment: the optional time-travel cursor on the content read
+# tools. "Flux Capacitor" in the docs; boring + literal on the wire so agents
+# read it at a glance.
+_AS_OF_PARAM = {
+    "type": "string",
+    "description": (
+        "Optional. Read as of a past PUBLISHED snapshot instead of current — a "
+        "run_id (from snapshot_status / changed_since) or an ISO-8601 UTC "
+        "timestamp (resolves to the snapshot current at that time). For "
+        "replay/audit ('what did this say when…'), a stable view across a long "
+        "task, or inspecting a page before a change. Output is marked historical."
+    ),
+}
 
 
 # ---- Path resolution --------------------------------------------------------
@@ -568,6 +593,439 @@ def tool_snapshot_status(index_root: Path) -> mcp_types.CallToolResult:
         "read_md routes.tsv        # url -> file map (grep-friendly)",
     ]
     return _ok(json.dumps(out, indent=2))
+
+
+# ---- changed_since: the temporal diff primitive (the "live feed") -----------
+# Reads the append-only, hash-chained <root>/changelog.jsonl and returns the
+# NET content delta between a caller-held cursor and the CURRENT PUBLISHED
+# snapshot. This is the read head over history the pipeline already records:
+# an agent stores the run_id it last saw (from snapshot_status), then pulls
+# only what changed instead of re-reading the whole corpus.
+#
+# The upper boundary is always the *published* snapshot (not the newest run on
+# disk), so the delta matches exactly what read_md will serve — transitions
+# from a later degraded/unpublished run have ts > the published completed_at
+# and are excluded. The changelog itself lives at the INDEX ROOT (one level
+# above current/), which is why this tool takes index_root, like snapshot_status
+# and unlike the current/-scoped content tools.
+
+_ISO_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+
+def _run_completed_at(index_root: Path, run_id: str) -> Optional[str]:
+    """The completed_at (else started_at) timestamp for a run, or None.
+
+    Prefers the run's snapshot.json (written for published AND degraded runs);
+    falls back to the durable runs table. Turns a run_id cursor into a
+    changelog timestamp boundary.
+    """
+    snap = read_snapshot(paths.run_dir(index_root, run_id))
+    ts = snap.get("completed_at") or snap.get("started_at")
+    if ts:
+        return ts
+    conn = open_manifest_ro(paths.manifest_path(index_root))
+    if conn is None:
+        return None
+    try:
+        r = conn.execute(
+            "SELECT completed_at, started_at FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if r is not None:
+            return r["completed_at"] or r["started_at"]
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    return None
+
+
+def _resolve_since(
+    index_root: Path, since: str
+) -> tuple[Optional[str], Optional[str]]:
+    """Resolve the ``since`` cursor to a changelog timestamp boundary.
+
+    ``since`` may be a run_id (resolved to that run's completed_at) or a bare
+    ISO-8601 UTC timestamp (used as-is). Returns (ts, None) on success or
+    (None, error) when it's neither a known run nor a valid timestamp.
+    """
+    s = since.strip()
+    ts = _run_completed_at(index_root, s)
+    if ts:
+        return ts, None
+    if _ISO_TS_RE.match(s):
+        return s, None
+    return None, (
+        f"`since` value '{since}' is neither a known run_id nor an ISO-8601 "
+        "UTC timestamp (YYYY-MM-DDTHH:MM:SSZ). Pass the run_id from "
+        "snapshot_status (the snapshot you last read), or a timestamp."
+    )
+
+
+# ── Time-travel: "Flux Capacitor" (as_of reads) + "Difference Engine" (diff_md) ──
+# Both read the retained, content-addressed run history that the pipeline already
+# keeps on disk (runs/<id>/). They serve ONLY published snapshots — degraded runs
+# have md trees but were never the served truth, the same provenance rule as
+# changed_since's align-to-published.
+
+def _published_runs(index_root: Path) -> list[tuple[Path, str]]:
+    """All published run dirs as (run_dir, completed_at), newest-first.
+
+    Published iff the run's snapshot.json status == 'published'. Used for
+    timestamp resolution and for naming the earliest available snapshot when an
+    as_of target is missing (e.g. GC'd in some future world; none exists today).
+    """
+    runs_root = index_root / "runs"
+    out: list[tuple[Path, str]] = []
+    if runs_root.is_dir():
+        for rd in runs_root.iterdir():
+            if not rd.is_dir():
+                continue
+            snap = read_snapshot(rd)
+            if snap.get("status") != "published":
+                continue
+            ts = snap.get("completed_at") or snap.get("started_at")
+            if ts:
+                out.append((rd, ts))
+    out.sort(key=lambda x: x[1], reverse=True)
+    return out
+
+
+def _resolve_as_of(
+    index_root: Path, as_of: str
+) -> tuple[Optional[Path], Optional[mcp_types.CallToolResult]]:
+    """Resolve an ``as_of`` cursor to a published run dir, or an error result.
+
+    ``as_of`` is a run_id (must be a published run) or an ISO-8601 UTC timestamp
+    (resolves to the latest published run with completed_at <= ts). Degraded,
+    unknown, or no-longer-on-disk runs return a graceful error naming what's
+    available — so the read contract survives a future run-dir GC.
+    """
+    s = as_of.strip()
+    rd = paths.run_dir(index_root, s)
+    if rd.is_dir():
+        status = read_snapshot(rd).get("status")
+        if status != "published":
+            return None, _err(
+                f"as_of run '{s}' exists but was never published "
+                f"(status={status or 'unknown'}) — time-travel serves only "
+                "published snapshots."
+            )
+        return rd, None
+    if _ISO_TS_RE.match(s):
+        for run_dir, ts in _published_runs(index_root):  # newest-first
+            if ts <= s:
+                return run_dir, None
+        runs = _published_runs(index_root)
+        hint = (f" Earliest published snapshot is {runs[-1][1]}."
+                if runs else " This index has no published snapshot.")
+        return None, _err(f"No published snapshot at or before {s}.{hint}")
+    avail = ", ".join(rd.name for rd, _ in _published_runs(index_root)[:5]) or "none"
+    return None, _err(
+        f"as_of '{as_of}' is not a known run_id or ISO-8601 UTC timestamp, or "
+        f"its run dir is no longer on disk. Available published runs: {avail}."
+    )
+
+
+def tool_changed_since(
+    index_root: Path,
+    since: str,
+    *,
+    path_prefix: Optional[str] = None,
+    tier: Optional[str] = None,
+    limit: int = MAX_CHANGED_ENTRIES,
+    offset: int = 0,
+) -> mcp_types.CallToolResult:
+    """Return the net added/modified/removed delta between ``since`` and the
+    current published snapshot, read from the hash-chained changelog."""
+    published = paths.published_run_dir(index_root)
+    if published is None:
+        return _err(
+            "changed_since needs a published baseline, but this index has no "
+            "published snapshot (current/ is unset). Call snapshot_status."
+        )
+    pub_snap = read_snapshot(published)
+    upper_run = published.name
+    upper_ts = pub_snap.get("completed_at") or _run_completed_at(index_root, upper_run)
+    if not upper_ts:
+        return _err(
+            f"Published run {upper_run} has no resolvable completed_at; "
+            "cannot bound the diff window."
+        )
+
+    since_ts, err = _resolve_since(index_root, since)
+    if err is not None:
+        return _err(err)
+    assert since_ts is not None
+
+    integ = pub_snap.get("integrity") or {}
+    base = {
+        "from": {"cursor": since, "resolved_ts": since_ts},
+        "to": {
+            "run_id": upper_run,
+            "completed_at": upper_ts,
+            "changelog_total_entries": integ.get("changelog_total_entries"),
+            "merkle_root": integ.get("merkle_root"),
+        },
+        "cursor": upper_run,
+    }
+
+    # Cursor at/after the current published snapshot → you're up to date.
+    if since_ts >= upper_ts:
+        return _ok(json.dumps({
+            **base,
+            "counts": {"added": 0, "modified": 0, "removed": 0, "changed_urls": 0},
+            "added": [], "modified": [], "removed": [],
+            "up_to_date": True,
+            "note": (
+                "Your cursor is at or after the current published snapshot — no "
+                "newer published changes. Re-check after the next publish."
+            ),
+        }, indent=2, default=str))
+
+    cl = paths.changelog_path(index_root)
+    if not cl.exists():
+        return _ok(json.dumps({
+            **base,
+            "counts": {"added": 0, "modified": 0, "removed": 0, "changed_urls": 0},
+            "added": [], "modified": [], "removed": [],
+            "note": "No changelog.jsonl yet — the index has recorded no transitions.",
+        }, indent=2, default=str))
+
+    # Collapse every in-window transition to a NET per-URL delta. Window is
+    # (since_ts, upper_ts]: strictly after the cursor, up to and including the
+    # published snapshot. A URL's old_hash is the old_hash of its FIRST
+    # in-window entry (its state at the cursor); its new_hash is the new_hash
+    # of its LAST in-window entry (its state at the published snapshot). This
+    # collapses a page that changed several times, and drops it entirely if the
+    # net effect is a no-op (old == new).
+    net: dict[str, dict] = {}
+    chain_tip: Optional[str] = None
+    malformed = 0
+    with cl.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                o = json.loads(line)
+            except json.JSONDecodeError:
+                malformed += 1
+                continue
+            ts = o.get("ts")
+            url = o.get("url")
+            if ts is None or url is None:
+                continue
+            if ts <= since_ts or ts > upper_ts:
+                continue
+            chain_tip = o.get("entry_hash") or chain_tip
+            cur = net.get(url)
+            if cur is None:
+                net[url] = {
+                    "first_old": o.get("old_hash"),
+                    "new_hash": o.get("new_hash"),
+                    "tier": o.get("tier"),
+                    "ts": ts,
+                    "type": o.get("change_type"),
+                    "entry_hash": o.get("entry_hash"),
+                }
+            else:
+                cur["new_hash"] = o.get("new_hash")
+                cur["ts"] = ts
+                cur["type"] = o.get("change_type")
+                cur["entry_hash"] = o.get("entry_hash")
+                cur["tier"] = o.get("tier")
+
+    added: list[dict] = []
+    modified: list[dict] = []
+    removed: list[dict] = []
+    for url, d in net.items():
+        if path_prefix and not url.startswith(path_prefix):
+            continue
+        if tier and d.get("tier") != tier:
+            continue
+        old, new = d["first_old"], d["new_hash"]
+        if old == new:
+            continue  # net no-op across the window
+        rec = {"url": url, "ts": d["ts"], "tier": d.get("tier"),
+               "entry_hash": d.get("entry_hash")}
+        if d.get("type") == "gone" or new is None:
+            removed.append({**rec, "old_hash": old})
+        elif old is None:
+            added.append({**rec, "new_hash": new})
+        else:
+            modified.append({**rec, "old_hash": old, "new_hash": new})
+
+    # Newest-first within each group; agents usually want recent churn first.
+    for lst in (added, modified, removed):
+        lst.sort(key=lambda r: r["ts"], reverse=True)
+
+    def _page(lst: list[dict]) -> tuple[list[dict], bool]:
+        return lst[offset: offset + limit], len(lst) > offset + limit
+
+    a_pg, a_tr = _page(added)
+    m_pg, m_tr = _page(modified)
+    r_pg, r_tr = _page(removed)
+    truncated = a_tr or m_tr or r_tr
+
+    out: dict[str, Any] = {
+        **base,
+        "counts": {
+            "added": len(added),
+            "modified": len(modified),
+            "removed": len(removed),
+            "changed_urls": len(added) + len(modified) + len(removed),
+        },
+        "added": a_pg,
+        "modified": m_pg,
+        "removed": r_pg,
+        "chain_tip_entry_hash": chain_tip,
+        "truncated": truncated,
+        "provenance": (
+            "Each item is a leaf of the append-only, hash-chained changelog; "
+            "this delta is a contiguous segment of that chain. Run "
+            "`sift verify-changelog` to validate the chain, and "
+            "read_md(verify=true) to confirm a page body against new_hash."
+        ),
+    }
+    if malformed:
+        out["malformed_changelog_lines"] = malformed
+    if truncated:
+        out["truncation_hint"] = (
+            f"Showing up to {limit} per group (offset {offset}). Use a larger "
+            "limit, page with offset, or narrow with path_prefix / tier."
+        )
+    return _ok(json.dumps(out, indent=2, default=str))
+
+
+def _read_body_and_hash(
+    run_dir: Path, path: str
+) -> tuple[Optional[str], Optional[str], Optional[mcp_types.CallToolResult]]:
+    """Return (body, content_hash, None) for ``run_dir/<path>``, or (None, None,
+    error). A missing file is (None, None, None) so the caller can classify it as
+    added/removed rather than erroring."""
+    p = _safe_path(run_dir, path)
+    if p is None:
+        return None, None, _err(f"Path '{path}' escapes the index root.")
+    if not p.is_file():
+        return None, None, None
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return None, None, _err(f"Could not read '{path}': {e}")
+    fm, body = split_frontmatter(text)
+    h = (parse_frontmatter(fm).get("content_hash", "").removeprefix("sha256:")
+         if fm else "")
+    return body, h, None
+
+
+def tool_diff_md(
+    index_root: Path,
+    path: str,
+    frm: str,
+    to: Optional[str] = None,
+    context: int = 3,
+    limit: int = MAX_DIFF_CHARS,
+) -> mcp_types.CallToolResult:
+    """Unified diff of one page's markdown body between two published snapshots.
+
+    The "Difference Engine": changed_since says WHICH pages moved; this says WHAT
+    moved within one — only the changed hunks, plus both content_hashes and a
+    +/- summary. Reads the retained run dirs (no re-fetch). ``frm`` is required;
+    ``to`` defaults to the current published snapshot.
+    """
+    if not path.startswith("md/"):
+        path = "md/" + path.lstrip("/")
+    from_dir, err = _resolve_as_of(index_root, frm)
+    if err is not None:
+        return err
+    if to:
+        to_dir, err = _resolve_as_of(index_root, to)
+        if err is not None:
+            return err
+    else:
+        to_dir = paths.published_run_dir(index_root)
+        if to_dir is None:
+            return _err("No published snapshot to diff against; pass `to` or publish first.")
+    assert from_dir is not None and to_dir is not None
+
+    from_body, from_hash, e1 = _read_body_and_hash(from_dir, path)
+    if e1 is not None:
+        return e1
+    to_body, to_hash, e2 = _read_body_and_hash(to_dir, path)
+    if e2 is not None:
+        return e2
+
+    out: dict[str, Any] = {
+        "path": path,
+        "from": {"run_id": from_dir.name,
+                 "completed_at": read_snapshot(from_dir).get("completed_at"),
+                 "content_hash": from_hash or None},
+        "to": {"run_id": to_dir.name,
+               "completed_at": read_snapshot(to_dir).get("completed_at"),
+               "content_hash": to_hash or None},
+    }
+    if from_body is None and to_body is None:
+        return _err(
+            f"'{path}' is in neither snapshot ({from_dir.name}, {to_dir.name})."
+        )
+    if from_body is None:
+        out.update(status="added", added_lines=len((to_body or "").splitlines()),
+                   removed_lines=0,
+                   note=f"Page added between {from_dir.name} and {to_dir.name}; "
+                        f"read_md(as_of={to_dir.name}) for the full body.")
+        return _ok(json.dumps(out, indent=2, default=str))
+    if to_body is None:
+        out.update(status="removed", added_lines=0,
+                   removed_lines=len(from_body.splitlines()),
+                   note=f"Page removed between {from_dir.name} and {to_dir.name}; "
+                        f"read_md(as_of={from_dir.name}) for what it said.")
+        return _ok(json.dumps(out, indent=2, default=str))
+    if (from_hash and to_hash and from_hash == to_hash) or from_body == to_body:
+        out.update(status="unchanged", added_lines=0, removed_lines=0, diff="")
+        return _ok(json.dumps(out, indent=2, default=str))
+
+    diff_lines = list(difflib.unified_diff(
+        from_body.splitlines(), to_body.splitlines(),
+        fromfile=f"{path}@{from_dir.name}", tofile=f"{path}@{to_dir.name}",
+        n=max(0, context), lineterm="",
+    ))
+    out.update(
+        status="modified",
+        added_lines=sum(1 for ln in diff_lines
+                        if ln.startswith("+") and not ln.startswith("+++")),
+        removed_lines=sum(1 for ln in diff_lines
+                          if ln.startswith("-") and not ln.startswith("---")),
+        diff=_truncate("\n".join(diff_lines), limit, "diff"),
+        provenance=("Both sides are content-addressed snapshots; cite from/to "
+                    "run_id + content_hash. read_md(verify=true, as_of=…) "
+                    "re-verifies either body."),
+    )
+    return _ok(json.dumps(out, indent=2, default=str))
+
+
+def tool_prove(
+    index_root: Path, url: str, *, as_of: Optional[str] = None,
+) -> mcp_types.CallToolResult:
+    """Emit a self-contained Merkle inclusion proof for one URL. Resolves the
+    run dir (current or as_of) in the MCP idiom, then delegates to the
+    self-checking prover — which refuses (never fabricates) if the run's md tree
+    doesn't reproduce its stored root."""
+    if as_of:
+        run_dir, err = _resolve_as_of(index_root, as_of)
+        if err is not None:
+            return err
+        assert run_dir is not None
+    else:
+        run_dir = paths.published_run_dir(index_root)
+        if run_dir is None:
+            return _err("No published snapshot; nothing to prove. Call snapshot_status.")
+    try:
+        result = prove.build_proof_for_run(
+            run_dir, url, manifest_path=paths.manifest_path(index_root))
+    except prove.ProofError as e:
+        return _err(str(e))
+    return _ok(json.dumps(result, indent=2, default=str))
 
 
 def tool_read_facts(root: Path, path: str) -> mcp_types.CallToolResult:
@@ -1158,6 +1616,69 @@ def _tool_descriptors(*, include_index: bool = False,
             annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
         ),
         mcp_types.Tool(
+            name="changed_since",
+            description=(
+                "Returns ONLY what changed since a cursor you hold — the net "
+                "added / modified / removed pages between a prior snapshot and "
+                "the current published one, read from the hash-chained changelog.\n"
+                "Use to AVOID re-reading the whole corpus each session: store the "
+                "run_id from snapshot_status, pass it back as `since`, then read_md "
+                "only the pages this returns. The delta is bounded to the "
+                "*published* snapshot, so it matches exactly what read_md serves "
+                "(changes from a later unpublished run never leak in).\n"
+                "`since` is a run_id (preferred — from snapshot_status) OR an "
+                "ISO-8601 UTC timestamp. Each item carries url, old_hash/new_hash, "
+                "tier, and the changelog entry_hash. Returns counts + a fresh "
+                "`cursor` (the current run_id) to store for next time; an empty "
+                "delta with up_to_date=true means you've already seen the current "
+                "snapshot.\n"
+                "Optional path_prefix / tier narrow the delta; results are "
+                "newest-first, capped per group with offset paging."
+                + ("\nIn multi-index mode pass index=<slug>, or omit / "
+                   "index=\"*\" to fan out across all indexes." if multi else "")
+            ),
+            inputSchema=_maybe_add_index_param({
+                "type": "object",
+                "required": ["since"],
+                "properties": {
+                    "since": {
+                        "type": "string",
+                        "description": (
+                            "Cursor: a run_id you previously saw (from "
+                            "snapshot_status — preferred) or an ISO-8601 UTC "
+                            "timestamp (YYYY-MM-DDTHH:MM:SSZ). The delta covers "
+                            "changes strictly after this point up to the current "
+                            "published snapshot."
+                        ),
+                    },
+                    "path_prefix": {
+                        "type": "string",
+                        "description": (
+                            "Only report URLs starting with this prefix, e.g. "
+                            "'https://www.ato.gov.au/individuals'."
+                        ),
+                    },
+                    "tier": {
+                        "type": "string",
+                        "description": "Only report pages in this tier, e.g. LIVING or FROZEN.",
+                    },
+                    "limit": {
+                        "type": "integer", "minimum": 1,
+                        "default": MAX_CHANGED_ENTRIES,
+                        "description": (
+                            f"Max items per group (added/modified/removed). "
+                            f"Default {MAX_CHANGED_ENTRIES}."
+                        ),
+                    },
+                    "offset": {
+                        "type": "integer", "minimum": 0, "default": 0,
+                        "description": "Skip this many items per group (paging). Default 0.",
+                    },
+                },
+            }, multi=multi, required=False),
+            annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
+        ),
+        mcp_types.Tool(
             name="read_md",
             description=(
                 "Reads one markdown file from the indexed corpus.\n"
@@ -1337,7 +1858,94 @@ def _tool_descriptors(*, include_index: bool = False,
             },
             annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
         ),
+        mcp_types.Tool(
+            name="diff_md",
+            description=(
+                "Unified diff of ONE page between two published snapshots — what "
+                "changed *within* a page, not which pages changed (that's "
+                "changed_since).\n"
+                "Returns only the changed hunks plus both content_hashes and a "
+                "+/- line summary, so you read what moved, not the whole page. "
+                "Pairs with changed_since: that gives the changed URLs, diff_md "
+                "shows the edits in each — read only the lines that moved.\n"
+                "`from` is required (a run_id from changed_since/snapshot_status, "
+                "or an ISO-8601 UTC timestamp); `to` defaults to the current "
+                "published snapshot. Reports added / removed / unchanged pages too."
+                + ("\nIn multi-index mode pass index=<slug>." if multi else "")
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["path", "from"],
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Page path under md/ (the 'md/' prefix is optional), e.g. 'md/individuals-and-families/your-tax-return.md'.",
+                    },
+                    "from": {
+                        "type": "string",
+                        "description": "Baseline snapshot: a run_id or ISO-8601 UTC timestamp.",
+                    },
+                    "to": {
+                        "type": "string",
+                        "description": "Target snapshot (run_id or timestamp). Defaults to the current published snapshot.",
+                    },
+                    "context": {
+                        "type": "integer", "minimum": 0, "default": 3,
+                        "description": "Unified-diff context lines per hunk. Default 3.",
+                    },
+                },
+            },
+            annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
+        ),
+        mcp_types.Tool(
+            name="prove",
+            description=(
+                "Emits a self-contained cryptographic proof that ONE page's "
+                "content_hash is committed by the published snapshot's Merkle "
+                "root. Use when an answer must be independently verifiable — the "
+                "envelope lets a third party confirm the page belongs to the "
+                "published corpus WITHOUT installing sift or trusting this server "
+                "(re-hash the leaf, fold the path, compare to merkle_root).\n"
+                "Pairs with read_md(verify=true): that proves the body matches its "
+                "frontmatter hash; prove shows that hash is in the snapshot "
+                "commitment. `url` is the absolute source URL (as in frontmatter "
+                "`url`). Optional `as_of` proves a past published snapshot.\n"
+                "Returns a JSON envelope (or `included:false` if the URL isn't in "
+                "that snapshot — a valid answer, not an error). Save it and run "
+                "`python -m sift.verify_proof <file>` to check it offline."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": ("Absolute http(s) URL of an indexed page "
+                                        "(must match a manifest row in FRESH or "
+                                        "FROZEN state)."),
+                    },
+                    "as_of": _AS_OF_PARAM,
+                },
+            },
+            annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
+        ),
     ])
+    # Time-travel ("Flux Capacitor"): add the optional `as_of` cursor to the five
+    # content read tools. query_manifest is excluded — manifest.db is current
+    # state only. Done as a post-pass so each tool's own schema stays readable.
+    _AS_OF_TOOLS = {"read_md", "grep_corpus", "glob_corpus", "list_dir", "read_facts"}
+    tools = [
+        (mcp_types.Tool(
+            name=t.name, description=t.description,
+            inputSchema={
+                **t.inputSchema,
+                "properties": {**(t.inputSchema.get("properties") or {}),
+                               "as_of": _AS_OF_PARAM},
+            },
+            annotations=t.annotations,
+        ) if t.name in _AS_OF_TOOLS else t)
+        for t in tools
+    ]
     if include_index:
         tools += _index_tool_descriptors(multi=multi)
 
@@ -1351,7 +1959,7 @@ def _tool_descriptors(*, include_index: bool = False,
     #     handles the multi-call merge and adds a per-index header).
     #   * list_indexes — not retrofitted; it's the discovery tool itself.
     if multi:
-        index_required = {"read_md", "read_facts", "index_url", "index_status"}
+        index_required = {"read_md", "read_facts", "diff_md", "prove", "index_url", "index_status"}
         skip = {"list_indexes"}
         retrofitted: list[mcp_types.Tool] = []
         for t in tools:
@@ -1475,7 +2083,7 @@ _FANOUT_HEADER = "===== index: {slug} ====="
 # in multi-mode, because their semantics ("read this specific file")
 # don't generalize to multiple indexes.
 _FANOUT_TOOLS = frozenset({
-    "snapshot_status", "grep_corpus", "glob_corpus",
+    "snapshot_status", "changed_since", "grep_corpus", "glob_corpus",
     "list_dir", "query_manifest",
 })
 
@@ -1550,6 +2158,11 @@ def _server_instructions(*, multi: bool, enable_index: bool) -> str:
         "Start every session with snapshot_status: it confirms a published "
         "snapshot exists and reports coverage, freshness, and the run id. If it "
         "reports unpublished, stop and surface that — the read tools will refuse.",
+        "",
+        "Remember the run_id snapshot_status returns. On a later session, call "
+        "changed_since(since=<that run_id>) to pull ONLY the added/modified/removed "
+        "pages since then — read_md just those instead of re-reading the corpus, "
+        "then store the new cursor it returns. This is how you stay current cheaply.",
     ]
     if multi:
         parts.append(
@@ -1729,44 +2342,127 @@ def build_server(
                                lambda r: tool_snapshot_status(r))
             return tool_snapshot_status(target)
 
+        # changed_since reads the index-root changelog (like snapshot_status,
+        # NOT the current/ snapshot), so route it here before the scoped path.
+        if name == "changed_since":
+            since = arguments.get("since")
+            if not isinstance(since, str) or not since:
+                return _err(
+                    "changed_since requires `since` — a run_id from "
+                    "snapshot_status, or an ISO-8601 UTC timestamp."
+                )
+            cs_kwargs = dict(
+                path_prefix=arguments.get("path_prefix"),
+                tier=arguments.get("tier"),
+                limit=int(arguments.get("limit", MAX_CHANGED_ENTRIES)),
+                offset=int(arguments.get("offset", 0)),
+            )
+            if target is None:           # fan-out across all indexes
+                return _fanout(
+                    registry,
+                    lambda r: tool_changed_since(r, since, **cs_kwargs),
+                )
+            return tool_changed_since(target, since, **cs_kwargs)
+
+        # diff_md reads two run dirs under the index root (like changed_since),
+        # so it routes here, not through the current/-scoped path.
+        if name == "diff_md":
+            d_path = arguments.get("path")
+            frm = arguments.get("from")
+            if not isinstance(d_path, str) or not d_path:
+                return _err("diff_md requires `path` (a page under md/).")
+            if not isinstance(frm, str) or not frm:
+                return _err(
+                    "diff_md requires `from` — a run_id (from changed_since / "
+                    "snapshot_status) or an ISO-8601 UTC timestamp."
+                )
+            if target is None:
+                return _err(
+                    "diff_md needs a specific index in multi-index mode — "
+                    "pass index=<slug>."
+                )
+            return tool_diff_md(
+                target, d_path, frm,
+                to=arguments.get("to"),
+                context=int(arguments.get("context", 3)),
+            )
+
+        # prove emits a proof against the index-root snapshot (current or as_of),
+        # like changed_since/diff_md — root-level, not current/-scoped.
+        if name == "prove":
+            p_url = arguments.get("url")
+            if not isinstance(p_url, str) or not p_url:
+                return _err("prove requires `url` — the absolute source URL of an indexed page.")
+            if target is None:                 # multi-mode needs a specific index
+                return _err("prove needs a specific index in multi-index mode — pass index=<slug>.")
+            return tool_prove(target, p_url, as_of=arguments.get("as_of"))
+
         def _scoped_call(idx_root: Path) -> mcp_types.CallToolResult:
-            cur, is_published = _resolve_root(idx_root)
-            guard = _require_published(is_published)
-            if guard is not None:
-                return guard
+            # "Flux Capacitor": as_of re-points the read root from current/ to a
+            # past published run dir. The tool bodies are unchanged — they just
+            # get a different base — and the result is marked historical.
+            as_of = arguments.get("as_of")
+            as_of_header: Optional[str] = None
+            if as_of:
+                if name == "query_manifest":
+                    return _err(
+                        "query_manifest does not support as_of — manifest.db holds "
+                        "current state only. Use changed_since for deltas, or as_of "
+                        "on read_md / grep_corpus / glob_corpus / list_dir / "
+                        "read_facts for historical content."
+                    )
+                base, err = _resolve_as_of(idx_root, as_of)
+                if err is not None:
+                    return err
+                assert base is not None
+                snap = read_snapshot(base)
+                as_of_header = (
+                    f"[as_of run={base.name} completed={snap.get('completed_at')} "
+                    "— HISTORICAL snapshot, not current]\n"
+                )
+            else:
+                base, is_published = _resolve_root(idx_root)
+                guard = _require_published(is_published)
+                if guard is not None:
+                    return guard
             try:
+                res: Optional[mcp_types.CallToolResult] = None
                 if name == "read_md":
-                    return tool_read_md(
-                        cur, arguments["path"],
+                    res = tool_read_md(
+                        base, arguments["path"],
                         offset=arguments.get("offset", 0),
                         limit=arguments.get("limit", MAX_READ_CHARS),
                         verify=arguments.get("verify", False),
                         index_root=idx_root,
                     )
-                if name == "grep_corpus":
-                    return tool_grep_corpus(
-                        cur, arguments["pattern"],
+                elif name == "grep_corpus":
+                    res = tool_grep_corpus(
+                        base, arguments["pattern"],
                         path=arguments.get("path", "md/"),
                         ignore_case=arguments.get("ignore_case", False),
                         files_only=arguments.get("files_only", False),
                         context=arguments.get("context", 0),
                     )
-                if name == "glob_corpus":
-                    return tool_glob_corpus(cur, arguments["pattern"])
-                if name == "list_dir":
-                    return tool_list_dir(cur, arguments.get("path", "."))
-                if name == "query_manifest":
-                    return tool_query_manifest(
-                        cur, arguments["sql"], index_root=idx_root,
+                elif name == "glob_corpus":
+                    res = tool_glob_corpus(base, arguments["pattern"])
+                elif name == "list_dir":
+                    res = tool_list_dir(base, arguments.get("path", "."))
+                elif name == "query_manifest":
+                    res = tool_query_manifest(
+                        base, arguments["sql"], index_root=idx_root,
                     )
-                if name == "read_facts":
-                    return tool_read_facts(cur, arguments["path"])
+                elif name == "read_facts":
+                    res = tool_read_facts(base, arguments["path"])
+                if res is None:
+                    avail = [t.name for t in _tool_descriptors(
+                        include_index=enable_index, multi=registry.is_multi,
+                    )]
+                    return _err(f"Unknown tool '{name}'. Available: {avail}")
+                if as_of_header and not res.isError and res.content:
+                    return _ok(as_of_header + res.content[0].text)
+                return res
             except KeyError as e:
                 return _err(f"Missing required argument: {e}")
-            avail = [t.name for t in _tool_descriptors(
-                include_index=enable_index, multi=registry.is_multi,
-            )]
-            return _err(f"Unknown tool '{name}'. Available: {avail}")
 
         if target is None:
             return _fanout(registry, _scoped_call)

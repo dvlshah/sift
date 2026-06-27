@@ -22,13 +22,39 @@ sift-mcp --root R --enable-index              # + write tools
 
 ## Server-shipped instructions
 
-The server sets a server-level `instructions` brief (the agent sees it on connect): *snapshot_status first → grep to locate, read_md to drill (offset/limit), glob/list_dir to explore, read_facts/query_manifest for structured lookups → be token-efficient (everything is capped) → cite content_hash + fetched_at + url.* Multi-index adds "list_indexes first, pass `index=<slug>`, `index="*"` fans out." Write mode adds "index_url then poll index_status until succeeded." This skill's [Query](../SKILL.md#query-a-connected-corpus) section is the expanded version.
+The server sets a server-level `instructions` brief (the agent sees it on connect): *snapshot_status first (remember its run_id; next session changed_since to pull only the delta) → grep to locate, read_md to drill (offset/limit), glob/list_dir to explore, read_facts/query_manifest for structured lookups → be token-efficient (everything is capped) → cite content_hash + fetched_at + url.* Multi-index adds "list_indexes first, pass `index=<slug>`, `index="*"` fans out." Write mode adds "index_url then poll index_status until succeeded." This skill's [Query](../SKILL.md#query-a-connected-corpus) section is the expanded version.
 
 ## Read tools (always available)
 
 ### `snapshot_status`
 **Call first.** Reports published yes/no, `run_id`, gate results, counts by state/tier, version pins, artifact inventory, and suggested entry points. **Never errors** (works pre-publish to diagnose).
 - `index` (multi only, optional; `"*"` fans out).
+
+### `changed_since`
+Net **added / modified / removed** pages since a cursor — the diff feed for staying current without re-reading. Store the `run_id` from `snapshot_status`; next session pass it back to pull only what moved, then `read_md` just those and store the new `cursor`. Read from the hash-chained `changelog.jsonl`; the delta is bounded to the **published** snapshot, so it matches what `read_md` serves (a later unpublished run never leaks in).
+- `since` (required) — a `run_id` (preferred) or ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`).
+- `path_prefix` (optional) — only URLs starting with this prefix.
+- `tier` (optional) — only pages in this tier (e.g. `LIVING`, `FROZEN`).
+- `limit` (default 500) / `offset` (default 0) — per group, newest-first.
+- `index` (multi only, optional; `"*"` fans out).
+- Returns `counts`, the three lists (each item: `url`, `old_hash`/`new_hash`, `tier`, `entry_hash`), a fresh `cursor`, and `chain_tip_entry_hash`. Empty delta with `up_to_date=true` → you're current.
+
+### `diff_md`
+Unified diff of ONE page between two published snapshots — what changed *within* a page (`changed_since` says *which* pages). Returns only the changed hunks + both `content_hash`es + a `+/-` line summary, so you read the lines that moved, not the whole page. Pairs with `changed_since`: it gives the changed URLs, `diff_md` shows the edits in each. Reports added / removed / unchanged pages too.
+- `path` (required) — page under `md/` (the `md/` prefix is optional).
+- `from` (required) — baseline: a run_id (from `changed_since` / `snapshot_status`) or ISO-8601 UTC timestamp.
+- `to` (optional) — target; defaults to the current published snapshot.
+- `context` (default 3) — diff context lines per hunk.
+- `index` (multi only, **required**).
+
+> **Time-travel (`as_of`).** `read_md`, `grep_corpus`, `glob_corpus`, `list_dir`, and `read_facts` accept an optional `as_of` — a run_id or ISO-8601 UTC timestamp — to read a past **published** snapshot instead of `current/`. Use for replay/audit ("what did this say when…"), a stable view across a long task, or inspecting a page before a change. Output is marked historical; degraded/unpublished runs are refused. `query_manifest` does not support `as_of` (the manifest is current-state only).
+
+### `prove`
+Emits a self-contained cryptographic **inclusion proof** that one page's `content_hash` is committed by the published snapshot's `merkle_root`. Use when an answer must be independently verifiable: the envelope lets a third party confirm the page is in the published corpus **without installing sift or trusting the server** — `python -m sift.verify_proof <file>` (stdlib only). Pairs with `read_md(verify=true)`: that proves the body matches its frontmatter hash; `prove` shows that hash is in the snapshot commitment.
+- `url` (required) — absolute source URL (must match a FRESH/FROZEN manifest row).
+- `as_of` (optional) — prove a past **published** snapshot (run_id or ISO-8601 UTC timestamp).
+- `index` (multi only, **required**).
+- Returns the envelope `{url, content_hash, leaf, run_id, completed_at, merkle_root, scheme, integrity_version, proof:[{sibling, position}], verify_hint, leaf_source}`, or `{included:false}` when the URL isn't in that snapshot (a valid answer, not an error). When the snapshot was timestamped (`[publish].timestamp_tsa_url`), the envelope also carries `timestamp:{tsa_url, time, rfc3161_token_b64}` — an independent RFC-3161 witness to the root's date that `verify-proof` checks. **Scope:** attests *membership + dated byte-integrity*, **not** non-membership or "current truth" (see SECURITY.md).
 
 ### `read_md`
 Read one markdown file. Use **after** locating it — `read_md` does not search. Returns YAML frontmatter (url, content_hash, tier, audience, fy_years, anchors) + body.
@@ -83,7 +109,7 @@ Read-only `SELECT`/`WITH` against `manifest.db` (the structured index of every U
 |---|---|---|
 | `read_md`, `read_facts` | **required** | no |
 | `index_url`, `index_status` | **required** | no |
-| `grep_corpus`, `glob_corpus`, `list_dir`, `query_manifest`, `snapshot_status` | optional | yes (slower, noisier — scope when you can) |
+| `grep_corpus`, `glob_corpus`, `list_dir`, `query_manifest`, `snapshot_status`, `changed_since` | optional | yes (slower, noisier — scope when you can) |
 
 ## Write tools (only with `--enable-index`)
 
