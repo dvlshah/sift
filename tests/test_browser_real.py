@@ -5,7 +5,7 @@ Hits public URLs with a real Chromium runtime. Skipped unless::
     SIFT_REAL_BROWSER=1 pytest tests/test_browser_real.py -v -s
 
 Requires:
-  * pip install 'sift[browser]'
+  * pip install 'sift-engine[browser]'
   * python -m playwright install chromium
 
 These tests share a single BrowserPool across the whole module (one
@@ -15,12 +15,10 @@ five URLs total per full run, no parallelism above pool concurrency.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import sys
 import time
-from pathlib import Path
 
 import pytest
 

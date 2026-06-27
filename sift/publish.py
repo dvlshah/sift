@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import random
 import sqlite3
 from pathlib import Path
@@ -30,6 +31,7 @@ from . import CRAWLER_VERSION, paths
 from . import agent_surface
 from . import facts as facts_mod
 from . import integrity
+from . import timestamp as timestamp_mod
 from ._io import (
     atomic_write_text,
     parse_frontmatter as _parse_frontmatter,
@@ -64,6 +66,13 @@ def _is_terminal_state(s: str) -> bool:
     the coverage gate and ``sift status`` agree on what 'terminal' means."""
     return s in _TERMINAL_STATES
 
+
+# Gates whose result is RECORDED in the snapshot but does NOT block publish yet
+# (warn-first rollout — see docs/design/engine-hardening.md "G-det"). Move a
+# name out of this set to make it blocking once it's proven clean on production
+# corpora.
+_ADVISORY_GATES: frozenset[str] = frozenset({"determinism"})
+
 # Soft-failure tunables for schema_sanity. A "short" body may be legitimate
 # (FROZEN archive stubs especially); we only fail if the fraction of short
 # non-FROZEN bodies in the sample exceeds the tolerance.
@@ -75,15 +84,22 @@ SHORT_BODY_TOLERANCE_NONFROZEN = 0.05  # fail above 5% short bodies in non-FROZE
 # Set via apply_config from IndexConfig.publish.gpg_key_id.
 GPG_KEY_ID: Optional[str] = None
 
+# Optional RFC-3161 Time-Stamp Authority URL. None = no external timestamp anchor
+# (default). When set, publish() requests a timestamp token over the snapshot's
+# merkle_root from this TSA — an independent witness to the root's date that no
+# one but the TSA controls. Set via apply_config from IndexConfig.publish.
+TIMESTAMP_TSA_URL: Optional[str] = None
+
 
 def apply_config(cfg) -> None:
     """Override gate thresholds from an IndexConfig. Called once at CLI startup."""
-    global COVERAGE_FLOOR, HASH_SAMPLE_RATE, HASH_SAMPLE_MIN, SCHEMA_SAMPLE_SIZE, GPG_KEY_ID
+    global COVERAGE_FLOOR, HASH_SAMPLE_RATE, HASH_SAMPLE_MIN, SCHEMA_SAMPLE_SIZE, GPG_KEY_ID, TIMESTAMP_TSA_URL
     COVERAGE_FLOOR = cfg.publish.coverage_floor
     HASH_SAMPLE_RATE = cfg.publish.hash_sample_rate
     HASH_SAMPLE_MIN = cfg.publish.hash_sample_min
     SCHEMA_SAMPLE_SIZE = cfg.publish.schema_sample_size
     GPG_KEY_ID = getattr(cfg.publish, "gpg_key_id", None)
+    TIMESTAMP_TSA_URL = getattr(cfg.publish, "timestamp_tsa_url", None)
 
 def _seed_rng(run_id: str, label: str) -> random.Random:
     """Deterministic RNG per gate so verification is reproducible."""
@@ -224,6 +240,96 @@ def gate_hash_sample(
     if mismatches:
         return False, f"{len(mismatches)}/{len(sample)} hash mismatches; first: {mismatches[0]}"
     return True, f"{len(sample)}/{len(all_md)} sampled, all match"
+
+
+def gate_determinism(
+    conn: sqlite3.Connection, root: Path, run_id: str
+) -> tuple[bool, str]:
+    """G-det: re-extract a random sample of FRESH/FROZEN rows from their cached
+    raw blob and require the recomputed content_hash to match the stored one.
+
+    ``gate_hash_sample`` (G2) only re-normalizes the already-stored markdown — it
+    never re-runs ``extract()``, so it is blind to a non-deterministic extractor.
+    This gate re-runs the full extract -> normalize -> hash path from the raw
+    bytes (the same ``reextract_and_hash`` that backs ``sift re-extract``), so it
+    actually verifies the property the provenance chain rests on: derivation is a
+    pure function of ``(raw, active profile)``. A divergent hash under the SAME
+    ``extractor_version`` is a P0 — extraction is not deterministic.
+
+    Non-failures, by design:
+      * stored ``extractor_version`` differs from the current code's — expected
+        version drift, re-derived on the next run, not a determinism bug;
+      * the raw blob is no longer on disk — can't verify, so it's skipped.
+    If nothing in the sample is verifiable the gate passes with a note.
+
+    Runs in-process. A fresh-interpreter (cross-``PYTHONHASHSEED``) variant that
+    also catches process-coupled drift is tracked in
+    ``docs/design/engine-hardening.md`` (G-det, full-environment pin).
+    """
+    from .extract import reextract_and_hash
+    from .fetch import read_raw_blob
+
+    candidates = [
+        r for r in iter_all(conn)
+        if r.state in ("FRESH", "FROZEN") and r.content_hash and r.raw_hash
+    ]
+    if not candidates:
+        return True, "no FRESH/FROZEN rows with raw blobs to sample"
+    sample_size = min(
+        len(candidates),
+        max(HASH_SAMPLE_MIN, int(len(candidates) * HASH_SAMPLE_RATE)),
+    )
+    rng = _seed_rng(run_id, "determinism")
+    sample = rng.sample(candidates, sample_size)
+
+    mismatches: list[str] = []
+    verified = 0
+    skipped_blob = 0
+    skipped_drift = 0
+    errored = 0
+    for row in sample:
+        try:
+            raw = read_raw_blob(root, row.raw_hash)
+            res = reextract_and_hash(raw, row.url)
+        except (FileNotFoundError, OSError, EOFError):
+            skipped_blob += 1
+            continue
+        except Exception:
+            # Containment boundary, mirroring extract_one: a pathological raw
+            # blob (corrupt deflate, adversarial HTML/JSON) must never let this
+            # ADVISORY gate abort publish() before the snapshot is written.
+            errored += 1
+            continue
+        # Version drift FIRST: a row carrying an older extractor_version (untouched
+        # this run) is expected to re-derive differently — that's drift, not a
+        # determinism failure, even when the stale raw no longer yields content.
+        if row.extractor_version and res.extractor_version != row.extractor_version:
+            skipped_drift += 1
+            continue
+        if not res.ok or res.content_hash is None:
+            mismatches.append(f"{row.url}: re-extract produced no content")
+            continue
+        stored = (row.content_hash or "").replace("sha256:", "")
+        recomputed = res.content_hash.replace("sha256:", "")
+        if stored != recomputed:
+            mismatches.append(
+                f"{row.url}: stored {stored[:12]} != recomputed {recomputed[:12]}"
+            )
+        else:
+            verified += 1
+
+    suffix = (
+        f"({skipped_blob} missing-blob, {skipped_drift} version-drift, "
+        f"{errored} errored)"
+    )
+    if mismatches:
+        return False, (
+            f"{len(mismatches)}/{len(sample)} re-extract mismatches "
+            f"(non-deterministic extraction); first: {mismatches[0]} {suffix}"
+        )
+    if verified == 0:
+        return True, f"0 verifiable in sample of {len(sample)} {suffix}"
+    return True, f"{verified}/{len(sample)} re-extracted match {suffix}"
 
 
 def gate_coverage(
@@ -482,6 +588,33 @@ def _changelog_chain_origin(root: Path) -> tuple[Optional[str], int]:
     return first_run, count
 
 
+def _derivation_env() -> dict[str, str]:
+    """Native-stack versions the content_hash silently depends on but the
+    behavioral ``*_VERSION`` strings don't capture: lxml / libxml2 (trafilatura
+    parses HTML through them, and their malformed-HTML recovery / whitespace can
+    shift across releases) and the CPython Unicode DB (``normalize_for_hash``
+    applies NFC, whose result can change for newly-assigned codepoints).
+
+    Recorded in the snapshot so a verifier reseeding the same manifest on a
+    different stack can DETECT the divergence — rather than silently recomputing
+    a different Merkle root and concluding the corpus was tampered with. Best
+    effort: any probe that can't resolve is omitted, never raised.
+    """
+    import unicodedata
+    env = {
+        "python": platform.python_version(),
+        "unicode": unicodedata.unidata_version,
+    }
+    try:
+        import lxml
+        from lxml import etree as _etree
+        env["lxml"] = lxml.__version__
+        env["libxml2"] = ".".join(str(p) for p in _etree.LIBXML_VERSION)
+    except Exception:
+        pass
+    return env
+
+
 def write_snapshot(
     root: Path,
     run_id: str,
@@ -492,6 +625,7 @@ def write_snapshot(
     expected_urls: int,
     gate_results: list[tuple[str, bool, str]],
     status: str,
+    timestamp_info: Optional[dict] = None,
 ) -> Path:
     by_state = counts_by_state(conn)
     by_tier = counts_by_tier(conn)
@@ -516,6 +650,38 @@ def write_snapshot(
         # No changelog (or empty) — current run is about to start it
         cl_genesis_run = run_id
 
+    # ---- Coverage, reported as two explicit fractions (never one ambiguous %) ----
+    # indexed_fraction  = content we actually hold (FRESH/FROZEN rows carrying a
+    #   content_hash — identical to the Merkle leaf_count) / expected.
+    # resolved_fraction = lifecycle-closed / expected; this ADDS terminal rows that
+    #   carry no content (GONE tombstones, browser-skips).
+    # A consumer rendering a "coverage %" badge MUST use indexed_fraction:
+    # resolved_fraction can read ~1.0 on a corpus that holds far fewer pages (e.g.
+    # a stale seed full of 404 -> GONE), which is the overclaim we refuse to ship.
+    # GONE/SKIPPED carry no content_hash, so they can never reach indexed_fraction
+    # by construction — the honest number is robust to the terminal-state set.
+    # CAVEAT: the denominator is `expected_urls` (the manifest/seed total), NOT the
+    # discovery-witness-backed `discovered_in_scope` of engine-hardening.md §4.1.
+    # So indexed_fraction is honest about LIFECYCLE (GONE/SKIPPED excluded) but not
+    # yet about discovery completeness — both fractions share that open overclaim.
+    # `denominator_basis` records this so a future §4.1 witness-backed metric can't
+    # be mistaken for this one.
+    terminal_count = sum(
+        n for state, n in by_state.items() if _is_terminal_state(state)
+    )
+    coverage = {
+        "expected_urls": expected_urls,
+        "denominator_basis": "manifest_total",
+        "indexed_count": leaf_count,
+        "resolved_count": terminal_count,
+        "indexed_fraction": (
+            round(leaf_count / expected_urls, 4) if expected_urls else None
+        ),
+        "resolved_fraction": (
+            round(terminal_count / expected_urls, 4) if expected_urls else None
+        ),
+    }
+
     snap = {
         "run_id": run_id,
         "started_at": started_at,
@@ -524,6 +690,7 @@ def write_snapshot(
         "expected_urls": expected_urls,
         "counts_by_state": by_state,
         "counts_by_tier": by_tier,
+        "coverage": coverage,
         "versions": {
             "crawler": CRAWLER_VERSION,
             "extractor": EXTRACTOR_VERSION,
@@ -531,12 +698,17 @@ def write_snapshot(
             "classifier": CLASSIFIER_VERSION,
             "integrity": integrity.INTEGRITY_VERSION,
         },
+        "derivation_env": _derivation_env(),
         "integrity": {
             "merkle_root": merkle_root,
             "leaf_count": leaf_count,
             "scheme": "sorted-leaves-bitcoin-style-sha256",
             "changelog_genesis_run": cl_genesis_run,
             "changelog_total_entries": cl_total_entries,
+            # External RFC-3161 timestamp anchor over merkle_root, when configured:
+            # {tsa_url, hash_algorithm, time, token_file}. The token itself lives at
+            # runs/<id>/merkle_root.tsr and is what a verifier checks.
+            **({"timestamp": timestamp_info} if timestamp_info else {}),
         },
         "gates": [
             {"name": name, "passed": ok, "detail": detail}
@@ -587,6 +759,8 @@ def publish(
     gates.append(("manifest_fs_integrity", g1_ok, g1_det))
     g2_ok, g2_det = gate_hash_sample(conn, root, run_id)
     gates.append(("hash_sample", g2_ok, g2_det))
+    gdet_ok, gdet_det = gate_determinism(conn, root, run_id)
+    gates.append(("determinism", gdet_ok, gdet_det))
     g3_ok, g3_det = gate_coverage(conn, expected_urls)
     gates.append(("coverage", g3_ok, g3_det))
     g4_ok, g4_det = gate_schema_sanity(root, run_id)
@@ -596,13 +770,45 @@ def publish(
     gcont_ok, gcont_det = gate_changelog_continuity(root, run_id)
     gates.append(("changelog_continuity", gcont_ok, gcont_det))
 
-    passed = all(ok for (_, ok, _) in gates)
+    passed = all(ok for (name, ok, _) in gates if name not in _ADVISORY_GATES)
     now = now_utc()
+    status = "published" if passed else "degraded"
     snap = write_snapshot(
         root, run_id, conn=conn, started_at=started_at, completed_at=now,
-        expected_urls=expected_urls, gate_results=gates,
-        status="published" if passed else "degraded",
+        expected_urls=expected_urls, gate_results=gates, status=status,
     )
+
+    # Optional RFC-3161 external timestamp over the merkle_root. Non-fatal: a TSA
+    # outage logs an "unwitnessed" gate row rather than failing the publish. The
+    # token (an independent witness to the root's date — neither sift nor the
+    # reader controls the TSA) lands at runs/<id>/merkle_root.tsr; its metadata
+    # goes in integrity.timestamp.
+    ts_info: Optional[dict] = None
+    if TIMESTAMP_TSA_URL:
+        run_dir = paths.run_dir(root, run_id)
+        root_hex = (json.loads(snap.read_text()).get("integrity") or {}).get("merkle_root")
+        if not root_hex:
+            gates.append(("rfc3161_timestamp", False, "no merkle_root to timestamp (empty corpus)"))
+        else:
+            try:
+                token = timestamp_mod.request_timestamp(root_hex, TIMESTAMP_TSA_URL)
+                (run_dir / "merkle_root.tsr").write_bytes(token)
+                meta = timestamp_mod.parse_timestamp(token)
+                ts_info = {
+                    "tsa_url": TIMESTAMP_TSA_URL,
+                    "hash_algorithm": meta.get("hash_algorithm", "sha256"),
+                    "time": meta.get("time"),
+                    "token_file": "merkle_root.tsr",
+                }
+                gates.append(("rfc3161_timestamp", True,
+                              f"witnessed by {TIMESTAMP_TSA_URL} at {meta.get('time')}"))
+            except Exception as e:  # noqa: BLE001 — non-fatal by design
+                gates.append(("rfc3161_timestamp", False, f"timestamp failed (non-fatal): {e}"))
+        snap = write_snapshot(
+            root, run_id, conn=conn, started_at=started_at, completed_at=now,
+            expected_urls=expected_urls, gate_results=gates, status=status,
+            timestamp_info=ts_info,
+        )
 
     # Optional GPG detach-signature on the snapshot. Non-fatal — if the
     # configured key isn't available or gpg isn't installed, log via gates
@@ -614,11 +820,11 @@ def publish(
             sig is not None,
             f"signed with {GPG_KEY_ID}" if sig else f"gpg sign failed (key {GPG_KEY_ID})",
         ))
-        # Re-write snapshot.json with the gate row recorded
+        # Re-write snapshot.json with the gate row recorded (carry the timestamp).
         snap = write_snapshot(
             root, run_id, conn=conn, started_at=started_at, completed_at=now,
-            expected_urls=expected_urls, gate_results=gates,
-            status="published" if passed else "degraded",
+            expected_urls=expected_urls, gate_results=gates, status=status,
+            timestamp_info=ts_info,
         )
         # If we re-wrote, re-sign so signature matches the final bytes
         if sig is not None:

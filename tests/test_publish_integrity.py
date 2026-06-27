@@ -135,6 +135,32 @@ class TestSnapshotMerkleRoot:
         assert stored == recomputed
 
 
+class TestSnapshotDerivationEnv:
+    """The snapshot records the native derivation stack (lxml/libxml2/unicode/
+    python) the content_hash depends on, so a verifier reseeding on a different
+    stack can detect drift instead of silently recomputing a divergent Merkle
+    root and crying tamper."""
+
+    def test_env_recorded(self, small_index):
+        root, run_id, conn = small_index
+        snap_path = write_snapshot(
+            root, run_id, conn=conn,
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:01Z",
+            expected_urls=3, gate_results=[], status="published",
+        )
+        snap = json.loads(snap_path.read_text())
+        env = snap.get("derivation_env") or {}
+        # python + unicode are always resolvable. lxml/libxml2 are best-effort
+        # (omitted if lxml can't import) — assert them only when present, matching
+        # _derivation_env's documented contract rather than mandating them.
+        assert env.get("python")
+        assert env.get("unicode")
+        if "lxml" in env:
+            assert env["lxml"]
+            assert env["libxml2"]
+
+
 def _gpg_available_with_key() -> tuple[bool, str]:
     """Best-effort check: is gpg installed AND does it have at least one secret key?"""
     try:

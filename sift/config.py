@@ -57,6 +57,32 @@ class FirecrawlScrapeConfig:
     rate_per_sec: float = 0.5
     concurrency: int = 2
     timeout_sec: float = 60.0
+    # When True, a 200-but-thin page (empty SPA shell / JS challenge) may
+    # escalate to Firecrawl too. Off by default: the *free* curl_cffi tier
+    # handles thin content first, and we don't want thin pages silently
+    # burning paid credits unless the operator opts in.
+    escalate_on_thin: bool = False
+
+
+@dataclass(frozen=True)
+class ImpersonateConfig:
+    """Tier-2 TLS-impersonation fetcher (curl_cffi). Free, self-hosted.
+
+    When ``enabled`` and the native httpx fetch hits an ``escalate_statuses``
+    code (default 403/429/503 — fingerprint/bot-manager blocks), a network
+    failure, or a thin 200, sift re-fetches the URL with a real browser's
+    TLS/HTTP2 fingerprint. Clears most "hardened" edges (Cloudflare/Akamai/
+    Imperva) with no browser and no per-request cost — so it sits *before*
+    the paid Firecrawl tier and absorbs the bulk of the escalation load.
+    Optional dep: ``pip install 'sift-engine[impersonate]'``.
+    """
+    enabled: bool = False
+    impersonate: str = "chrome"          # curl_cffi target: chrome|safari|edge|...
+    escalate_statuses: tuple[int, ...] = (403, 429, 503)
+    thin_text_threshold: int = 500       # pool's own re-check after impersonating
+    rate_per_sec: float = 1.0
+    concurrency: int = 4
+    timeout_sec: float = 30.0
 
 
 @dataclass(frozen=True)
@@ -66,7 +92,15 @@ class CrawlConfig:
     timeout_sec: float = 30.0
     retries: int = 3
     user_agent: Optional[str] = None  # None -> built-in identifier in fetch.py
+    # Content-quality escalation trigger: a 2xx whose visible text is below this
+    # routes UP the transport ladder instead of being committed. 0 disables it
+    # (back-compat for callers that don't opt in).
+    thin_text_threshold: int = 500
+    # Adaptive per-host floor: after this many native blocks, a host's remaining
+    # URLs skip the native round-trip and start at the escalation ladder. 0 = off.
+    host_block_floor: int = 3
     firecrawl: FirecrawlScrapeConfig = field(default_factory=FirecrawlScrapeConfig)
+    impersonate: ImpersonateConfig = field(default_factory=ImpersonateConfig)
 
 
 @dataclass(frozen=True)
@@ -100,6 +134,11 @@ class PublishConfig:
     # Set to a key id (long form or fingerprint) when you want audit-grade
     # snapshot integrity.
     gpg_key_id: Optional[str] = None
+    # Optional RFC-3161 Time-Stamp Authority URL (e.g. http://timestamp.digicert.com).
+    # None disables external timestamping. When set, each publish anchors the
+    # snapshot's merkle_root to this independent TSA — a third party's witness to
+    # the root's date, verifiable with `openssl ts -verify`.
+    timestamp_tsa_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +249,21 @@ def _parse_firecrawl_config(raw: dict[str, Any]) -> FirecrawlScrapeConfig:
         rate_per_sec=float(raw.get("rate_per_sec", 0.5)),
         concurrency=int(raw.get("concurrency", 2)),
         timeout_sec=float(raw.get("timeout_sec", 60.0)),
+        escalate_on_thin=bool(raw.get("escalate_on_thin", False)),
+    )
+
+
+def _parse_impersonate_config(raw: dict[str, Any]) -> ImpersonateConfig:
+    """Parse ``[crawl.impersonate]`` subsection. Missing keys take defaults so
+    operators can flip ``enabled = true`` and inherit everything else."""
+    return ImpersonateConfig(
+        enabled=bool(raw.get("enabled", False)),
+        impersonate=str(raw.get("impersonate", "chrome")),
+        escalate_statuses=tuple(int(s) for s in raw.get("escalate_statuses", (403, 429, 503))),
+        thin_text_threshold=int(raw.get("thin_text_threshold", 500)),
+        rate_per_sec=float(raw.get("rate_per_sec", 1.0)),
+        concurrency=int(raw.get("concurrency", 4)),
+        timeout_sec=float(raw.get("timeout_sec", 30.0)),
     )
 
 
@@ -270,7 +324,10 @@ def load_config(path: Optional[Path] = None) -> IndexConfig:
             timeout_sec=float(crawl_raw.get("timeout_sec", 30.0)),
             retries=int(crawl_raw.get("retries", 3)),
             user_agent=crawl_raw.get("user_agent"),
+            thin_text_threshold=int(crawl_raw.get("thin_text_threshold", 500)),
+            host_block_floor=int(crawl_raw.get("host_block_floor", 3)),
             firecrawl=_parse_firecrawl_config(crawl_raw.get("firecrawl", {})),
+            impersonate=_parse_impersonate_config(crawl_raw.get("impersonate", {})),
         ),
         publish=PublishConfig(
             coverage_floor=float(publish_raw.get("coverage_floor", 0.99)),
@@ -278,6 +335,7 @@ def load_config(path: Optional[Path] = None) -> IndexConfig:
             hash_sample_min=int(publish_raw.get("hash_sample_min", 25)),
             schema_sample_size=int(publish_raw.get("schema_sample_size", 50)),
             gpg_key_id=publish_raw.get("gpg_key_id") or None,
+            timestamp_tsa_url=publish_raw.get("timestamp_tsa_url") or None,
         ),
         seed=SeedConfig(
             host_allow=tuple(seed_raw.get("host_allow", ("www.ato.gov.au",))),
