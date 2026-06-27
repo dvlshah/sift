@@ -389,11 +389,14 @@ def gate_changelog_continuity(root: Path, run_id: str) -> tuple[bool, str]:
     PUBLISHED snapshot (``current/snapshot.json``) and fails if the genesis run
     changed or the total entry count went DOWN.
 
-    It cannot false-positive in legitimate use: a full index reset has no prior
-    snapshot (passes), and normal append-only growth keeps the genesis and only
-    grows the count (passes). The ONLY failing case is "the changelog was
+    Once the changelog has at least one entry, it cannot false-positive in
+    legitimate use: a full index reset has no prior snapshot (passes), an empty
+    prior chain is exempt (genesis only locks after the first real entry, see
+    below), and normal append-only growth keeps the genesis and only grows the
+    count (passes). The only failing case is "a non-empty changelog was
     deleted/truncated while the published snapshot was kept" — corruption or
-    tampering, which has no benign cause.
+    tampering, with no benign cause. An unreadable prior snapshot fails OPEN
+    (continuity UNVERIFIED) rather than blocking publish.
     """
     prior_dir = paths.published_run_dir(root)
     if prior_dir is None:
@@ -401,12 +404,19 @@ def gate_changelog_continuity(root: Path, run_id: str) -> tuple[bool, str]:
     try:
         prior = json.loads((prior_dir / "snapshot.json").read_text())
     except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return True, "no readable prior snapshot"
+        return True, "prior snapshot unreadable — continuity UNVERIFIED"
     prior_integ = prior.get("integrity") or {}
     prior_genesis = prior_integ.get("changelog_genesis_run")
     prior_total = prior_integ.get("changelog_total_entries")
     if prior_genesis is None or prior_total is None:
         return True, "prior snapshot predates changelog-continuity fields"
+    if prior_total == 0:
+        # The prior published snapshot had no chain yet — its genesis was a
+        # run_id fallback (write_snapshot uses the current run_id when the
+        # changelog is empty), not a real first entry. There's no lineage to be
+        # continuous WITH until a real entry exists, so genesis only locks once
+        # prior_total >= 1; append-only growth from here is still enforced.
+        return True, "prior chain empty (no lineage to enforce yet)"
 
     cur_genesis, cur_total = _changelog_chain_origin(root)
     if cur_genesis is None:

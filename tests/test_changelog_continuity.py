@@ -60,3 +60,22 @@ class TestChangelogContinuityGate:
         ok, detail = publish.gate_changelog_continuity(tmp_path, "r1")
         assert not ok
         assert "shrank" in detail
+
+    def test_empty_prior_chain_passes(self, tmp_path):
+        # The P0: a prior published snapshot whose changelog was EMPTY recorded
+        # its genesis as a run_id fallback. The next run (a different run_id)
+        # must NOT be wedged forever — genesis only locks once a real entry
+        # exists. Without the prior_total==0 guard this fails "genesis changed".
+        _publish_prior(tmp_path, "run-AAA", 0)      # prior total == 0
+        _write_changelog(tmp_path, "run-BBB", 2)    # different genesis
+        ok, detail = publish.gate_changelog_continuity(tmp_path, "r1")
+        assert ok, detail
+        assert "prior chain empty" in detail
+
+    def test_equal_total_noop_passes(self, tmp_path):
+        # A no-op re-publish that appends nothing: same genesis, equal total.
+        _publish_prior(tmp_path, "G", 3)
+        _write_changelog(tmp_path, "G", 3)
+        ok, detail = publish.gate_changelog_continuity(tmp_path, "r1")
+        assert ok, detail
+        assert "continuous" in detail
