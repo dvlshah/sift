@@ -193,3 +193,41 @@ class TestSnapshotCoverageFractions:
         snap = json.loads(paths.snapshot_path(tmp_path, run_id).read_text())
         assert snap["coverage"]["indexed_fraction"] is None
         assert snap["coverage"]["resolved_fraction"] is None
+
+    def test_frozen_with_hash_counts_in_both(self, tmp_path):
+        # FROZEN-with-hash counts in BOTH indexed and resolved; FROZEN-without-
+        # hash counts in resolved only — locks the numerator definition.
+        import json
+
+        from sift.manifest import (init_schema, now_utc, open_db, transaction,
+                                   upsert_seed)
+        run_id = "r1"
+        paths.run_dir(tmp_path, run_id).mkdir(parents=True, exist_ok=True)
+        conn = open_db(paths.manifest_path(tmp_path))
+        init_schema(conn)
+        now = now_utc()
+        with transaction(conn):
+            for i in range(10):
+                upsert_seed(conn, f"https://x/{i}", "LIVING", None, "v1", None, now)
+            conn.execute(
+                "UPDATE manifest SET state='FRESH', content_hash='sha256:abc' "
+                "WHERE url IN ('https://x/0','https://x/1','https://x/2',"
+                "'https://x/3','https://x/4')"
+            )
+            conn.execute(
+                "UPDATE manifest SET state='GONE' "
+                "WHERE url IN ('https://x/5','https://x/6','https://x/7')"
+            )
+            conn.execute("UPDATE manifest SET state='FROZEN', "
+                         "content_hash='sha256:def' WHERE url='https://x/8'")
+            conn.execute("UPDATE manifest SET state='FROZEN', "
+                         "content_hash=NULL WHERE url='https://x/9'")
+        publish.write_snapshot(
+            tmp_path, run_id, conn=conn, started_at=now, completed_at=now,
+            expected_urls=10, gate_results=[], status="published",
+        )
+        cov = json.loads(
+            paths.snapshot_path(tmp_path, run_id).read_text())["coverage"]
+        assert cov["indexed_count"] == 6     # 5 FRESH + 1 FROZEN-with-hash
+        assert cov["resolved_count"] == 10   # FRESH5 + GONE3 + FROZEN2
+        assert cov["denominator_basis"] == "manifest_total"

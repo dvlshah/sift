@@ -466,11 +466,18 @@ def write_snapshot(
     # a stale seed full of 404 -> GONE), which is the overclaim we refuse to ship.
     # GONE/SKIPPED carry no content_hash, so they can never reach indexed_fraction
     # by construction — the honest number is robust to the terminal-state set.
+    # CAVEAT: the denominator is `expected_urls` (the manifest/seed total), NOT the
+    # discovery-witness-backed `discovered_in_scope` of engine-hardening.md §4.1.
+    # So indexed_fraction is honest about LIFECYCLE (GONE/SKIPPED excluded) but not
+    # yet about discovery completeness — both fractions share that open overclaim.
+    # `denominator_basis` records this so a future §4.1 witness-backed metric can't
+    # be mistaken for this one.
     terminal_count = sum(
         n for state, n in by_state.items() if _is_terminal_state(state)
     )
     coverage = {
         "expected_urls": expected_urls,
+        "denominator_basis": "manifest_total",
         "indexed_count": leaf_count,
         "resolved_count": terminal_count,
         "indexed_fraction": (
