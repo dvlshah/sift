@@ -201,3 +201,23 @@ class TestDeterminismGate:
         ok, detail = publish.gate_determinism(conn, tmp_path, "r1")
         assert ok, detail
         assert "version-drift" in detail
+
+    def test_missing_blob_is_skipped_not_crash(self, tmp_path):
+        # raw_hash points at a blob that doesn't exist -> read_raw_blob raises;
+        # the advisory gate must skip it and NEVER crash publish().
+        from sift.manifest import (init_schema, now_utc, open_db, transaction,
+                                   upsert_seed)
+        url = "https://example.test/page"
+        conn = open_db(paths.manifest_path(tmp_path))
+        init_schema(conn)
+        now = now_utc()
+        with transaction(conn):
+            upsert_seed(conn, url, "LIVING", None, "v1", None, now)
+            conn.execute(
+                "UPDATE manifest SET state='FRESH', raw_hash=?, content_hash=?, "
+                "extractor_version=? WHERE url=?",
+                ("0" * 64, "sha256:abc", "ext-v1", url),
+            )
+        ok, detail = publish.gate_determinism(conn, tmp_path, "r1")
+        assert ok
+        assert "missing-blob" in detail

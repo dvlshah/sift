@@ -277,18 +277,28 @@ def gate_determinism(
     verified = 0
     skipped_blob = 0
     skipped_drift = 0
+    errored = 0
     for row in sample:
         try:
             raw = read_raw_blob(root, row.raw_hash)
-        except (FileNotFoundError, OSError):
+            res = reextract_and_hash(raw, row.url)
+        except (FileNotFoundError, OSError, EOFError):
             skipped_blob += 1
             continue
-        res = reextract_and_hash(raw, row.url)
+        except Exception:
+            # Containment boundary, mirroring extract_one: a pathological raw
+            # blob (corrupt deflate, adversarial HTML/JSON) must never let this
+            # ADVISORY gate abort publish() before the snapshot is written.
+            errored += 1
+            continue
+        # Version drift FIRST: a row carrying an older extractor_version (untouched
+        # this run) is expected to re-derive differently — that's drift, not a
+        # determinism failure, even when the stale raw no longer yields content.
+        if row.extractor_version and res.extractor_version != row.extractor_version:
+            skipped_drift += 1
+            continue
         if not res.ok or res.content_hash is None:
             mismatches.append(f"{row.url}: re-extract produced no content")
-            continue
-        if row.extractor_version and res.extractor_version != row.extractor_version:
-            skipped_drift += 1  # version bump, not a determinism failure
             continue
         stored = (row.content_hash or "").replace("sha256:", "")
         recomputed = res.content_hash.replace("sha256:", "")
@@ -299,7 +309,10 @@ def gate_determinism(
         else:
             verified += 1
 
-    suffix = f"({skipped_blob} missing-blob, {skipped_drift} version-drift)"
+    suffix = (
+        f"({skipped_blob} missing-blob, {skipped_drift} version-drift, "
+        f"{errored} errored)"
+    )
     if mismatches:
         return False, (
             f"{len(mismatches)}/{len(sample)} re-extract mismatches "
