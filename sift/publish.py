@@ -64,6 +64,13 @@ def _is_terminal_state(s: str) -> bool:
     the coverage gate and ``sift status`` agree on what 'terminal' means."""
     return s in _TERMINAL_STATES
 
+
+# Gates whose result is RECORDED in the snapshot but does NOT block publish yet
+# (warn-first rollout — see docs/design/engine-hardening.md "G-det"). Move a
+# name out of this set to make it blocking once it's proven clean on production
+# corpora.
+_ADVISORY_GATES: frozenset[str] = frozenset({"determinism"})
+
 # Soft-failure tunables for schema_sanity. A "short" body may be legitimate
 # (FROZEN archive stubs especially); we only fail if the fraction of short
 # non-FROZEN bodies in the sample exceeds the tolerance.
@@ -224,6 +231,83 @@ def gate_hash_sample(
     if mismatches:
         return False, f"{len(mismatches)}/{len(sample)} hash mismatches; first: {mismatches[0]}"
     return True, f"{len(sample)}/{len(all_md)} sampled, all match"
+
+
+def gate_determinism(
+    conn: sqlite3.Connection, root: Path, run_id: str
+) -> tuple[bool, str]:
+    """G-det: re-extract a random sample of FRESH/FROZEN rows from their cached
+    raw blob and require the recomputed content_hash to match the stored one.
+
+    ``gate_hash_sample`` (G2) only re-normalizes the already-stored markdown — it
+    never re-runs ``extract()``, so it is blind to a non-deterministic extractor.
+    This gate re-runs the full extract -> normalize -> hash path from the raw
+    bytes (the same ``reextract_and_hash`` that backs ``sift re-extract``), so it
+    actually verifies the property the provenance chain rests on: derivation is a
+    pure function of ``(raw, active profile)``. A divergent hash under the SAME
+    ``extractor_version`` is a P0 — extraction is not deterministic.
+
+    Non-failures, by design:
+      * stored ``extractor_version`` differs from the current code's — expected
+        version drift, re-derived on the next run, not a determinism bug;
+      * the raw blob is no longer on disk — can't verify, so it's skipped.
+    If nothing in the sample is verifiable the gate passes with a note.
+
+    Runs in-process. A fresh-interpreter (cross-``PYTHONHASHSEED``) variant that
+    also catches process-coupled drift is tracked in
+    ``docs/design/engine-hardening.md`` (G-det, full-environment pin).
+    """
+    from .extract import reextract_and_hash
+    from .fetch import read_raw_blob
+
+    candidates = [
+        r for r in iter_all(conn)
+        if r.state in ("FRESH", "FROZEN") and r.content_hash and r.raw_hash
+    ]
+    if not candidates:
+        return True, "no FRESH/FROZEN rows with raw blobs to sample"
+    sample_size = min(
+        len(candidates),
+        max(HASH_SAMPLE_MIN, int(len(candidates) * HASH_SAMPLE_RATE)),
+    )
+    rng = _seed_rng(run_id, "determinism")
+    sample = rng.sample(candidates, sample_size)
+
+    mismatches: list[str] = []
+    verified = 0
+    skipped_blob = 0
+    skipped_drift = 0
+    for row in sample:
+        try:
+            raw = read_raw_blob(root, row.raw_hash)
+        except (FileNotFoundError, OSError):
+            skipped_blob += 1
+            continue
+        res = reextract_and_hash(raw, row.url)
+        if not res.ok or res.content_hash is None:
+            mismatches.append(f"{row.url}: re-extract produced no content")
+            continue
+        if row.extractor_version and res.extractor_version != row.extractor_version:
+            skipped_drift += 1  # version bump, not a determinism failure
+            continue
+        stored = (row.content_hash or "").replace("sha256:", "")
+        recomputed = res.content_hash.replace("sha256:", "")
+        if stored != recomputed:
+            mismatches.append(
+                f"{row.url}: stored {stored[:12]} != recomputed {recomputed[:12]}"
+            )
+        else:
+            verified += 1
+
+    suffix = f"({skipped_blob} missing-blob, {skipped_drift} version-drift)"
+    if mismatches:
+        return False, (
+            f"{len(mismatches)}/{len(sample)} re-extract mismatches "
+            f"(non-deterministic extraction); first: {mismatches[0]} {suffix}"
+        )
+    if verified == 0:
+        return True, f"0 verifiable in sample of {len(sample)} {suffix}"
+    return True, f"{verified}/{len(sample)} re-extracted match {suffix}"
 
 
 def gate_coverage(
@@ -527,6 +611,8 @@ def publish(
     gates.append(("manifest_fs_integrity", g1_ok, g1_det))
     g2_ok, g2_det = gate_hash_sample(conn, root, run_id)
     gates.append(("hash_sample", g2_ok, g2_det))
+    gdet_ok, gdet_det = gate_determinism(conn, root, run_id)
+    gates.append(("determinism", gdet_ok, gdet_det))
     g3_ok, g3_det = gate_coverage(conn, expected_urls)
     gates.append(("coverage", g3_ok, g3_det))
     g4_ok, g4_det = gate_schema_sanity(root, run_id)
@@ -534,7 +620,7 @@ def publish(
     g5_ok, g5_det = gate_facts_validation(root, run_id)
     gates.append(("facts_validation", g5_ok, g5_det))
 
-    passed = all(ok for (_, ok, _) in gates)
+    passed = all(ok for (name, ok, _) in gates if name not in _ADVISORY_GATES)
     now = now_utc()
     snap = write_snapshot(
         root, run_id, conn=conn, started_at=started_at, completed_at=now,
