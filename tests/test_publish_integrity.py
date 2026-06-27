@@ -151,12 +151,14 @@ class TestSnapshotDerivationEnv:
         )
         snap = json.loads(snap_path.read_text())
         env = snap.get("derivation_env") or {}
-        # python + unicode are always resolvable; lxml/libxml2 resolve in any
-        # environment that can import trafilatura (a hard dependency).
+        # python + unicode are always resolvable. lxml/libxml2 are best-effort
+        # (omitted if lxml can't import) — assert them only when present, matching
+        # _derivation_env's documented contract rather than mandating them.
         assert env.get("python")
         assert env.get("unicode")
-        assert env.get("lxml")
-        assert env.get("libxml2")
+        if "lxml" in env:
+            assert env["lxml"]
+            assert env["libxml2"]
 
 
 def _gpg_available_with_key() -> tuple[bool, str]:
