@@ -54,6 +54,9 @@ If you were invoked with **no specific question** (e.g. a bare `/sift`), stop af
 3. `read_facts` when the answer is a **number, rate, threshold, or deadline** — facts are atomic structured records with `$schema` + `source_url` + `content_hash`, more reliable than prose.
 4. `query_manifest` for cross-cutting questions the filesystem can't answer ("pages changed in the last 7 days", "all FRESH pages under parent_guide X"). SELECT/WITH only. Discover schema with `SELECT sql FROM sqlite_master WHERE type='table'`.
 5. `glob_corpus` / `list_dir` to explore the path tree when you don't yet know the shape ("all 2025 forms", what's under `facts/`).
+6. `changed_since(since=<run_id>)` to stay current across sessions — remember the `run_id` from `snapshot_status`, then pull only the added/modified/removed pages since it and `read_md` just those, instead of re-reading. Store the new `cursor` it returns.
+7. `diff_md(path, from=<run_id>)` to read only the *lines* that changed in a page, not the whole page; and `as_of=<run_id>` on `read_md` / `grep_corpus` / `read_facts` to read a past **published** snapshot — replay/audit, a stable view across a long task, or seeing what a page said before a change.
+8. `prove(url)` when an answer must be **independently verifiable** — emits a self-contained inclusion proof that the page's `content_hash` is committed by the published snapshot's `merkle_root`, checkable offline via `sift verify-proof` / `python -m sift.verify_proof` without trusting the server. It attests *membership + dated byte-integrity* of a published page — not non-membership or "is it still current." When the index is published with `[publish].timestamp_tsa_url` set, the proof also carries an RFC-3161 timestamp — an independent TSA's witness to the root's date, so the date isn't merely self-asserted.
 
 **Output caps — design your call around them:**
 
@@ -64,6 +67,8 @@ If you were invoked with **no specific question** (e.g. a bare `/sift`), stop af
 | `glob_corpus` | 500 paths | narrow the pattern |
 | `list_dir` | 500 entries | go one directory deeper |
 | `query_manifest` | 500 rows | add `LIMIT` / a tighter `WHERE` |
+| `changed_since` | 500 per group | raise `limit`, page with `offset`, or narrow with `path_prefix` / `tier` |
+| `diff_md` | 16,000 chars | the hunk truncates on huge pages; lower `context` |
 
 **3. Cite with provenance.** Every markdown file leads with YAML frontmatter carrying `url`, `fetched_at`, `content_hash`, `tier`, and anchors. When you state a fact from the corpus, cite the **source url + `content_hash` + `fetched_at`** (and the `run_id` from `snapshot_status`). That dated, hash-pinned citation is sift's whole point — don't drop it on answers that matter.
 
@@ -95,13 +100,16 @@ pip install -e ".[dev,evals]"     # CLI + MCP server + eval suite + test deps
 # minimal runtime only: pip install -e .
 ```
 
-Optional browser stack — **only** if you must index JavaScript-rendered SPAs (Next.js/Vue/React pages a profile opts into):
+Optional escalation tiers for hardened / JS-rendered sites (the fetch ladder is `native httpx → curl_cffi → browser → Firecrawl`, each tried only on need):
 
 ```bash
-pip install -e ".[browser]" && python -m playwright install chromium
+pip install -e ".[impersonate]"   # tier 2: curl_cffi TLS impersonation — free, no browser
+pip install -e ".[browser]" && python -m playwright install chromium   # tier 3: render JS
 ```
 
-Browser fetch costs 150–300 MB RAM per render and is **off** in the default config (`[browser].enabled`). Leave it off unless a profile actually routes URLs to it; static HTML and PDFs never need it.
+- **`[impersonate]`** (free, self-hosted) defeats most Cloudflare/Akamai/Imperva *fingerprint* blocks — enable with `--impersonate-fallback` or `[crawl.impersonate].enabled`. Try this first for 401/403/429.
+- **`[browser]`** renders JS-only pages; ~150–300 MB RAM per render, **off** by default (`[browser].enabled`). Chromium launches lazily on first render, so an enabled-but-unused browser costs nothing; it also degrades gracefully if the dep is missing (the run continues on the other tiers).
+- **Firecrawl** (`--firecrawl-fallback`, paid) is the last resort for JS-challenge edges; never fires on thin content unless `[crawl.firecrawl].escalate_on_thin=true`.
 
 Entry points after install: `sift` (pipeline CLI), `sift-mcp` (MCP server), `sift-evals` (eval harness). Verify with `sift --help`.
 
@@ -253,7 +261,8 @@ Then set `profile = "sift.sites.irs:IRSProfile"` in `sift.toml`, reseed, and run
 | Read tools return "No published snapshot at `<root>/current/`" | pipeline never completed a passing publish | `snapshot_status` for gate detail; finish `sift run`; for capped runs see coverage gate below |
 | `sift run` exits **2** / G3 coverage gate failed on a deliberately partial crawl | most seeded URLs not in a terminal state | `--coverage-base planned` (with `--limit`) or `filtered-tiers` (with `--tier`) |
 | SPA page is empty or missing | browser fetch off; URL was `SKIPPED_BROWSER_DISABLED` | `pip install -e ".[browser]" && playwright install chromium`, set `[browser].enabled=true`, ensure the profile routes it |
-| Fetch fails with 401/403 | bot protection on the source | add `--firecrawl-fallback` (needs `FIRECRAWL_API_KEY`); Kasada-class sites remain out of reach |
+| Fetch fails with 401/403/429 | bot protection on the source | add `--impersonate-fallback` first (free, `[impersonate]` extra — clears most fingerprint blocks); then `[browser].enabled=true` for JS; then `--firecrawl-fallback` (paid) for JS-challenge edges. Kasada-class sites remain out of reach |
+| 200 but extracted page is empty (SPA shell / challenge) | content is JS-rendered or a soft block | the content-quality trigger auto-escalates when a tier is wired — add `--impersonate-fallback` and/or `[browser].enabled=true` |
 | `read_md verify=true` → `isError` (hash mismatch) | file changed since publish — untrusted | re-publish from a clean run; do **not** cite the file |
 | Multi-index tool errors that an index is required | called a content tool without `index=` | `list_indexes`, then pass `index=<slug>` (`read_md`/`read_facts` always require it) |
 | `index_url` refused / "not writeable" | server lacks `--enable-index`, host not in `seed.host_allow`, or the sub-index's `sift.toml` has no `[seed].host_allow` | enable the flag; add the host; give the sub-index an allow-list and restart |

@@ -22,7 +22,32 @@ concurrency  = 8          # in-flight HTTP cap, still rate-limited (CLI: --concu
 timeout_sec  = 30.0
 retries      = 3          # per-URL transient-error retries within one run
 # user_agent = "my-crawler/1.0 (+contact)"   # unset => sift's identifying UA
-# [crawl.firecrawl]  max_credits_per_run = N  # caps --firecrawl-fallback spend
+thin_text_threshold = 500 # a 2xx with fewer visible chars (empty SPA shell / JS
+                          # challenge) escalates up the ladder; 0 disables the trigger
+host_block_floor = 3      # after N native blocks, a host's later URLs skip the
+                          # native round-trip (+ its 429/503 backoff) and start at
+                          # the escalation ladder; 0 disables. `sift run` reports the
+                          # effect under run_summary["adaptive_floor"]={floored_hosts,
+                          # native_skipped}.
+
+# ---- Tier-2 escalation: curl_cffi TLS impersonation (free, self-hosted) -----
+# Defeats most Cloudflare/Akamai/Imperva fingerprint blocks with no browser.
+# Needs the [impersonate] extra. Enable via this OR the --impersonate-fallback flag.
+[crawl.impersonate]
+enabled           = false
+impersonate       = "chrome"          # curl_cffi target: chrome|safari|edge|...
+escalate_statuses = [403, 429, 503]   # native statuses that trigger escalation
+rate_per_sec      = 1.0
+concurrency       = 4
+timeout_sec       = 30.0
+
+# ---- Tier-3 escalation: Firecrawl /v2/scrape (paid; --firecrawl-fallback) ---
+[crawl.firecrawl]
+# enabled = true
+# max_credits_per_run = 100           # caps spend per run
+# escalate_on_thin = false            # if true, a thin 200 may also reach the
+                                      # PAID tier; off by default (free tiers
+                                      # handle thin content first)
 
 # ---- Publish-gate thresholds -----------------------------------------------
 [publish]
@@ -31,6 +56,9 @@ hash_sample_rate   = 0.01   # 1% of md files re-hashed each publish
 hash_sample_min    = 25     # ...but never fewer than this
 schema_sample_size = 50     # files checked for structural sanity
 # gpg_key_id = "..."        # set => gpg --detach-sign snapshot.json
+# timestamp_tsa_url = "http://timestamp.digicert.com"  # set => RFC-3161 timestamp
+#                            # over merkle_root each publish (independent date witness;
+#                            # non-fatal on TSA outage). See SECURITY.md.
 
 # ---- Seed-time URL filtering -----------------------------------------------
 [seed]

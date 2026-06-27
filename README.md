@@ -24,8 +24,8 @@ Your agent's built-in web-fetch gives you:
 
 ## ✅ With sift
 
-- **Always fresh** — you control the crawl; conditional GETs refetch only what changed
-- **Provable** — content-hash + date on every page; cite the source, hash, and snapshot
+- **Always fresh** — you control the crawl; conditional GETs refetch only what changed, and `changed_since` lets your agent pull just the delta instead of re-reading the corpus
+- **Provable** — content-hash + date on every page; cite the source, hash, and snapshot, read any past snapshot (`as_of`), or emit a self-contained `prove` inclusion proof a third party verifies offline (`python -m sift.verify_proof`) without trusting the server — optionally anchored by an RFC-3161 timestamp so the date is witnessed by a third party, not self-asserted
 - **Complete & grep-native** — the whole site on disk, not a handful of retrieved snippets
 - **Self-hosted** — any `http(s)` site you can reach, public or internal; your data stays yours
 
@@ -71,7 +71,7 @@ sift --version && which sift-mcp  # confirm it's on PATH
 Download the skill so you (the agent) know how to build, operate, and query an index.
 Read .claude/skills/sift/SKILL.md after downloading — it is the source of truth for the rest.
 ```bash
-SKILL=https://raw.githubusercontent.com/dvlshah/sift/v0.1.0/.claude/skills/sift
+SKILL=https://raw.githubusercontent.com/dvlshah/sift/v0.2.0/.claude/skills/sift
 mkdir -p .claude/skills/sift/reference
 curl -fsSL $SKILL/SKILL.md -o .claude/skills/sift/SKILL.md
 for f in cli config mcp-tools; do curl -fsSL $SKILL/reference/$f.md -o .claude/skills/sift/reference/$f.md; done
@@ -93,9 +93,12 @@ sift run    --root ./sift-index --config sift.toml --limit 25 --coverage-base pl
 sift verify --root ./sift-index --skip-signature
 ```
 Drop `--limit 25 --coverage-base planned` for a full crawl once extraction looks good.
-Bot-blocked host → add `--firecrawl-fallback` (needs FIRECRAWL_API_KEY).
+Hardened / bot-blocked host (Cloudflare/Akamai/Imperva) → add `--impersonate-fallback`
+(free, TLS-fingerprint impersonation; `pip install 'sift-engine[impersonate]'`).
 JS-rendered SPA → `pip install 'sift-engine[browser]' && python -m playwright install chromium`,
-then set profile = "sift.sites.generic_browser:GenericBrowserProfile" and add `[browser]\nenabled = true`.
+then add `[browser]\nenabled = true` (it joins the ladder as a free render tier).
+Still blocked (JS-challenge edges) → `--firecrawl-fallback` (paid; needs FIRECRAWL_API_KEY).
+These compose into one escalation ladder: native → impersonate → browser → Firecrawl.
 
 4 — WIRE THE READ-ONLY MCP SERVER
 Use the ABSOLUTE path to ./sift-index. Add this to the project's .mcp.json (Claude Code / Cursor / Codex):
@@ -163,7 +166,7 @@ Your agent reads the published snapshot **read-only** over MCP: `snapshot_status
 
 > **Open core, Apache-2.0.** This repo is the full open-source engine (pipeline + MCP server) and runs standalone. A hosted platform built on it is in development.
 
-**Status — v0.1.0**, initial public release; tests green on Python 3.11–3.13. Known limits: no run-dir GC yet, stdout-only logging, stdio-only MCP transport. Issues & roadmap → [GitHub Issues](https://github.com/dvlshah/sift/issues).
+**Status — v0.2.0**; tests green on Python 3.11–3.13. Adds the tiered fetch transport (native → curl_cffi → browser → Firecrawl) for hardened and JS-rendered sites. Known limits: no run-dir GC yet, stdout-only logging, stdio-only MCP transport. Issues & roadmap → [GitHub Issues](https://github.com/dvlshah/sift/issues).
 
 ## License
 
