@@ -484,6 +484,66 @@ def gate_facts_validation(root: Path, run_id: str) -> tuple[bool, str]:
     return True, f"{total}/{total} facts files valid ({len(schemas)} schemas registered)"
 
 
+def gate_changelog_continuity(root: Path, run_id: str) -> tuple[bool, str]:
+    """G-cont: the hash-chained changelog must EXTEND the previously published
+    one, never silently restart or shrink.
+
+    ``verify_chain`` only checks a chain's internal linkage, so
+    ``rm changelog.jsonl && sift publish`` yields a fresh, internally-valid chain
+    with a new genesis and a reset entry count — erasing lineage undetected. This
+    gate compares this run's changelog genesis + length against the PRIOR
+    PUBLISHED snapshot (``current/snapshot.json``) and fails if the genesis run
+    changed or the total entry count went DOWN.
+
+    Once the changelog has at least one entry, it cannot false-positive in
+    legitimate use: a full index reset has no prior snapshot (passes), an empty
+    prior chain is exempt (genesis only locks after the first real entry, see
+    below), and normal append-only growth keeps the genesis and only grows the
+    count (passes). The only failing case is "a non-empty changelog was
+    deleted/truncated while the published snapshot was kept" — corruption or
+    tampering, with no benign cause. An unreadable prior snapshot fails OPEN
+    (continuity UNVERIFIED) rather than blocking publish.
+    """
+    prior_dir = paths.published_run_dir(root)
+    if prior_dir is None:
+        return True, "no prior published snapshot (fresh index)"
+    try:
+        prior = json.loads((prior_dir / "snapshot.json").read_text())
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return True, "prior snapshot unreadable — continuity UNVERIFIED"
+    prior_integ = prior.get("integrity") or {}
+    prior_genesis = prior_integ.get("changelog_genesis_run")
+    prior_total = prior_integ.get("changelog_total_entries")
+    if prior_genesis is None or prior_total is None:
+        return True, "prior snapshot predates changelog-continuity fields"
+    if prior_total == 0:
+        # The prior published snapshot had no chain yet — its genesis was a
+        # run_id fallback (write_snapshot uses the current run_id when the
+        # changelog is empty), not a real first entry. There's no lineage to be
+        # continuous WITH until a real entry exists, so genesis only locks once
+        # prior_total >= 1; append-only growth from here is still enforced.
+        return True, "prior chain empty (no lineage to enforce yet)"
+
+    cur_genesis, cur_total = _changelog_chain_origin(root)
+    if cur_genesis is None:
+        cur_genesis = run_id  # mirror write_snapshot's fresh-start handling
+
+    if cur_genesis != prior_genesis:
+        return False, (
+            f"changelog genesis changed ({prior_genesis} -> {cur_genesis}): the "
+            "chain was reset/wiped, erasing lineage"
+        )
+    if cur_total < prior_total:
+        return False, (
+            f"changelog shrank ({prior_total} -> {cur_total} entries): "
+            "entries were removed (truncation)"
+        )
+    return True, (
+        f"continuous (genesis {cur_genesis}, {cur_total} entries, "
+        f"prior {prior_total})"
+    )
+
+
 def gpg_sign_snapshot(snapshot_path: Path, key_id: str) -> Optional[Path]:
     """Detach-sign snapshot.json with GPG. Returns the .sig path on success,
     None on failure (failure is non-fatal — signing is optional)."""
@@ -707,6 +767,8 @@ def publish(
     gates.append(("schema_sanity", g4_ok, g4_det))
     g5_ok, g5_det = gate_facts_validation(root, run_id)
     gates.append(("facts_validation", g5_ok, g5_det))
+    gcont_ok, gcont_det = gate_changelog_continuity(root, run_id)
+    gates.append(("changelog_continuity", gcont_ok, gcont_det))
 
     passed = all(ok for (name, ok, _) in gates if name not in _ADVISORY_GATES)
     now = now_utc()
