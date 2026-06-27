@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import random
 import sqlite3
 from pathlib import Path
@@ -527,6 +528,33 @@ def _changelog_chain_origin(root: Path) -> tuple[Optional[str], int]:
     return first_run, count
 
 
+def _derivation_env() -> dict[str, str]:
+    """Native-stack versions the content_hash silently depends on but the
+    behavioral ``*_VERSION`` strings don't capture: lxml / libxml2 (trafilatura
+    parses HTML through them, and their malformed-HTML recovery / whitespace can
+    shift across releases) and the CPython Unicode DB (``normalize_for_hash``
+    applies NFC, whose result can change for newly-assigned codepoints).
+
+    Recorded in the snapshot so a verifier reseeding the same manifest on a
+    different stack can DETECT the divergence — rather than silently recomputing
+    a different Merkle root and concluding the corpus was tampered with. Best
+    effort: any probe that can't resolve is omitted, never raised.
+    """
+    import unicodedata
+    env = {
+        "python": platform.python_version(),
+        "unicode": unicodedata.unidata_version,
+    }
+    try:
+        import lxml
+        from lxml import etree as _etree
+        env["lxml"] = lxml.__version__
+        env["libxml2"] = ".".join(str(p) for p in _etree.LIBXML_VERSION)
+    except Exception:
+        pass
+    return env
+
+
 def write_snapshot(
     root: Path,
     run_id: str,
@@ -610,6 +638,7 @@ def write_snapshot(
             "classifier": CLASSIFIER_VERSION,
             "integrity": integrity.INTEGRITY_VERSION,
         },
+        "derivation_env": _derivation_env(),
         "integrity": {
             "merkle_root": merkle_root,
             "leaf_count": leaf_count,
