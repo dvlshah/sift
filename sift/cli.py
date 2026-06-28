@@ -419,6 +419,11 @@ def seed(
     excludes = compile_excludes(tuple(patterns))
     # Host allow: CLI wins; else config; else built-in default
     allowed_hosts = host_allow or cfg.seed.host_allow
+    # robots.txt Disallow enforcement — respect the source's crawl directives.
+    robots_gate = None
+    if cfg.crawl.respect_robots:
+        from .robots import RobotsGate
+        robots_gate = RobotsGate(cfg.crawl.user_agent)
 
     seeds: list[tuple[str, Optional[str]]] = []  # (url, lastmod_iso_or_None)
     for src in sources:
@@ -432,7 +437,7 @@ def seed(
     allowed = {h.lower() for h in allowed_hosts}
     now = now_utc()
     inserted = reclassified = skipped_host = skipped_excluded = 0
-    skipped_malformed = 0
+    skipped_malformed = skipped_robots = 0
     with transaction(conn):
         for raw_url, lm in seeds:
             url = canonicalize_url(raw_url)
@@ -448,6 +453,9 @@ def seed(
                 continue
             if is_excluded(url, excludes):
                 skipped_excluded += 1
+                continue
+            if robots_gate is not None and not robots_gate.allowed(url):
+                skipped_robots += 1
                 continue
             tier = classify_tier(url).value
             pg = parent_guide(url)
@@ -472,8 +480,9 @@ def seed(
     elif seeds and new_count == 0:
         click.echo(
             f"warn: all {len(seeds)} discovered URL(s) were filtered out "
-            f"(host_filter={skipped_host}, exclude_filter={skipped_excluded}). "
-            f"Check [seed] host_allow ({list(allowed_hosts)}) and exclude patterns.",
+            f"(host_filter={skipped_host}, exclude_filter={skipped_excluded}, "
+            f"robots_filter={skipped_robots}). Check [seed] host_allow "
+            f"({list(allowed_hosts)}), exclude patterns, and the source's robots.txt.",
             err=True,
         )
     if skipped_malformed:
@@ -492,6 +501,7 @@ def seed(
                 "reclassified": reclassified,
                 "skipped_host": skipped_host,
                 "skipped_excluded": skipped_excluded,
+                "skipped_robots": skipped_robots,
                 "skipped_malformed": skipped_malformed,
                 "exclude_patterns": patterns,
                 "total_in_manifest": _total_rows(conn),

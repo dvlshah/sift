@@ -92,6 +92,10 @@ class CrawlConfig:
     timeout_sec: float = 30.0
     retries: int = 3
     user_agent: Optional[str] = None  # None -> built-in identifier in fetch.py
+    # Respect robots.txt Disallow rules: a Disallowed URL is dropped at seed time
+    # (never fetched). Set False only for sources you have permission to index. A
+    # missing/unreachable robots.txt allows everything (standard semantics).
+    respect_robots: bool = True
     # Content-quality escalation trigger: a 2xx whose visible text is below this
     # routes UP the transport ladder instead of being committed. 0 disables it
     # (back-compat for callers that don't opt in).
