@@ -51,12 +51,49 @@ def test_admission_rejects_challenge_interstitial():
     assert reason == "admission-challenge-page"
 
 
-def test_hard_marker_but_substantial_content_is_admitted():
-    # A security write-up that names a bot-manager but has real content: the
-    # length guard keeps it admitted — no false-positive data loss.
-    long_body = "DataDome is a bot-management vendor used by many sites. " * 30  # >512
-    ok, _ = admit_content(b"<html>... datadome ...</html>", long_body, "text/html")
+def test_article_discussing_a_botmanager_is_admitted():
+    # A page that is *about* a vendor mentions the marker in its prose, so the
+    # marker is in the EXTRACTED text -> the structure-vs-content test admits it
+    # (regardless of length).
+    body = "The cf-browser-verification class is injected by Cloudflare IUAM. " * 4
+    raw = b"<html><body><p>" + body.encode() + b"</p></body></html>"
+    ok, _ = admit_content(raw, body, "text/html")
     assert ok is True
+
+
+def test_normal_cloudflare_botfight_page_is_admitted():
+    # P0 regression: Cloudflare Bot-Fight / JS-Detections injects
+    # /cdn-cgi/challenge-platform into EVERY page's <head> — it must NOT reject.
+    body = "Welcome to our docs. Configure billing, webhooks, and API keys here."
+    raw = (b"<html><head><script src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'>"
+           b"</script></head><body><p>" + body.encode() + b"</p></body></html>")
+    ok, _ = admit_content(raw, body, "text/html")
+    assert ok is True
+
+
+def test_normal_datadome_protected_page_is_admitted():
+    # P0 regression: DataDome's client-side key rides on every protected page; a
+    # bare "datadome" substring must NOT reject (only the block iframe does).
+    body = "Centre d'aide : comment vendre, acheter et payer en toute securite."
+    raw = (b"<html><head><script>var DATADOME_CLIENT_SIDE_KEY='ABC123';</script>"
+           b"</head><body><p>" + body.encode() + b"</p></body></html>")
+    ok, _ = admit_content(raw, body, "text/html")
+    assert ok is True
+
+
+def test_verbose_challenge_is_rejected_regardless_of_length():
+    # F1 regression: a wordy block page (>512 extracted chars) is still rejected —
+    # the structure-vs-content test does not depend on length.
+    visible = ("You have been blocked. Our system flagged automated traffic from "
+               "your network. If you believe this is an error, contact support and "
+               "quote the block reference identifier shown below. ") * 4
+    assert len(visible) >= 512
+    raw = (b"<html><head><title>Blocked</title></head><body><p>" + visible.encode()
+           + b"</p><iframe src='https://geo.captcha-delivery.com/captcha/?cid=x'>"
+             b"</iframe></body></html>")
+    ok, reason = admit_content(raw, visible, "text/html")
+    assert ok is False
+    assert reason == "admission-challenge-page"
 
 
 def test_short_page_without_vendor_marker_is_admitted():
@@ -80,6 +117,17 @@ def test_non_html_is_never_a_challenge():
 
 def test_missing_content_type_is_judged_as_html():
     ok, reason = admit_content(CF_CHALLENGE, "Just a moment Checking your browser", None)
+    assert ok is False
+    assert reason == "admission-challenge-page"
+
+
+def test_incapsula_block_caught_via_structural_iframe():
+    # The visible "Request unsuccessful" text alone is admitted-safe; the block is
+    # caught by the structural _Incapsula_Resource iframe path instead.
+    visible = "Request unsuccessful. Incapsula incident ID: 1234-5678901234."
+    raw = (b"<html><body><iframe src='/_Incapsula_Resource?SWUDNSAI=31&xinfo=7'>"
+           b"</iframe><p>" + visible.encode() + b"</p></body></html>")
+    ok, reason = admit_content(raw, visible, "text/html")
     assert ok is False
     assert reason == "admission-challenge-page"
 

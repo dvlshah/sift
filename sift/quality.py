@@ -95,23 +95,25 @@ def looks_thin(body: bytes, content_type: str | None, threshold: int) -> bool:
     return visible_text_len(text) < threshold
 
 
-# Hard vendor bot-challenge fingerprints: JS/cookie/script identifiers emitted by
-# bot-managers that never appear in legitimate page *content*. Unlike the generic
-# phrases in _CHALLENGE_MARKERS (e.g. "access denied", which a real page can
-# legitimately contain), these are safe to REJECT outright at the admission gate.
-_HARD_CHALLENGE_MARKERS = (
-    "cf-browser-verification",  # Cloudflare IUAM
-    "/cdn-cgi/challenge-platform",  # Cloudflare challenge
-    "_incapsula_resource",  # Imperva/Incapsula
-    "request unsuccessful. incapsula",
-    "px-captcha",  # PerimeterX / HUMAN
-    "datadome",  # DataDome
+# Markers that appear ONLY on a whole-page bot-challenge / block interstitial —
+# never on a normal 200 page from the same vendor. We deliberately EXCLUDE vendor
+# *protection* tags that ride on ordinary pages (measured live on real content):
+# `/cdn-cgi/challenge-platform` (Cloudflare Bot-Fight / "JS Detections" injects it
+# into every page's <head>) and a bare `datadome` substring (DataDome's
+# client-side key is on every protected page). Those caused real false positives.
+# All STRUCTURAL (script/class/iframe markup), never the visible block text — the
+# structure-vs-content test below requires markers absent from the extracted prose,
+# so a visible-text marker (e.g. "Request unsuccessful. Incapsula…") would be dead
+# weight (always in the extracted text too). _incapsula_resource (the block iframe
+# path) covers Incapsula structurally.
+_CHALLENGE_PAGE_MARKERS = (
+    "cf-browser-verification",  # Cloudflare IUAM page body class
+    "cf-im-under-attack",       # Cloudflare IUAM page body class
+    "window._cf_chl_opt",       # Cloudflare challenge options object
+    "_incapsula_resource",      # Imperva/Incapsula block iframe path
+    "px-captcha",               # PerimeterX / HUMAN captcha block element id
+    "captcha-delivery",         # DataDome block iframe (geo.captcha-delivery.com)
 )
-
-# A genuine interstitial extracts to almost nothing; a real article that happens
-# to discuss a bot-manager is far longer. Requiring the extracted body to also be
-# short guards the rare case of a security write-up that quotes a vendor token.
-_ADMIT_CHALLENGE_MAX_CHARS = 512
 
 
 def admit_content(
@@ -119,25 +121,36 @@ def admit_content(
 ) -> tuple[bool, str]:
     """Trust-boundary gate at the extract step. Returns ``(admit, reason)``.
 
-    Rejects a *non-empty* extraction that is actually a bot-challenge
-    interstitial — a hard vendor fingerprint in the raw HTML together with a
-    short extracted body. ``looks_thin`` only *escalates* the fetch on these;
-    when escalation is disabled or every transport tier is blocked, the challenge
-    body still reaches extract and would otherwise be hashed and signed as real
+    Rejects a *non-empty* extraction whose RAW HTML carries a whole-page
+    bot-challenge / block marker that is **not** present in the extracted text —
+    i.e. the marker is page *structure* (a challenge script / block iframe), not
+    something the page is *about*. ``looks_thin`` only *escalates* the fetch on
+    these; when escalation is disabled or every transport tier is blocked, the
+    interstitial reaches extract and would otherwise be hashed and signed as real
     content (the §6.2 trust-boundary hole).
 
-    Conservative by construction: only HTML is judged, only hard vendor markers
-    count, and the body must also be short — so legitimate pages (including ones
-    that name a bot-manager) are never rejected. Empty extractions are already
-    handled upstream (``reextract_and_hash`` returns ``ok=False``).
+    The structure-vs-content test makes the gate length-independent (a *verbose*
+    interstitial is still caught) while never dropping a real article that merely
+    *discusses* a bot-manager (the marker is then in the extracted prose, so the
+    ``not in`` guard admits it). Combined with markers that never appear on a
+    vendor's normal pages, the gate errs toward admitting — no false positives.
+
+    Scope (a heuristic backstop, not comprehensive): Cloudflare IUAM/managed
+    challenge, Incapsula, PerimeterX, and DataDome block pages. It does NOT cover
+    Akamai / AWS WAF / Kasada / Turnstile, nor a challenge that renders its marker
+    into visible text; per-site calibrated admission is future work. Empty
+    extractions are already handled upstream (``reextract_and_hash`` ok=False).
     """
-    visible = len(extracted_text.strip()) if extracted_text else 0
-    if visible >= _ADMIT_CHALLENGE_MAX_CHARS:
-        return True, ""  # substantial content -> not an interstitial
+    if not extracted_text:
+        return True, ""  # empty handled upstream; nothing to judge
     ct = (content_type or "").lower()
     if ct and "html" not in ct:
         return True, ""  # PDFs / JSON / images are never challenge pages
     low = raw.decode("utf-8", "ignore").lower()
-    if any(m in low for m in _HARD_CHALLENGE_MARKERS):
-        return False, "admission-challenge-page"
+    text_low = extracted_text.lower()
+    for m in _CHALLENGE_PAGE_MARKERS:
+        # In the raw HTML (page structure) but NOT in the extracted content:
+        # a challenge script/iframe, not an article discussing the vendor.
+        if m in low and m not in text_low:
+            return False, "admission-challenge-page"
     return True, ""
