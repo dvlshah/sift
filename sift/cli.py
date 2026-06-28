@@ -68,7 +68,7 @@ from .manifest import (
     transaction,
     upsert_seed,
 )
-from .normalize import NORMALIZER_VERSION
+from .normalize import normalizer_version
 from .plan import load_plan, plan as plan_phase
 from .publish import build_artifacts, publish as publish_phase
 
@@ -572,7 +572,7 @@ def plan(
         pp,
         now=now,
         extractor_version=EXTRACTOR_VERSION,
-        normalizer_version=NORMALIZER_VERSION,
+        normalizer_version=normalizer_version(),
         profile=sites_mod.current_profile(),
         cfg=cfg,
         only_urls=only_urls,
@@ -850,7 +850,7 @@ def purge_cmd(root: Path, config_path: Optional[Path], dry_run: bool):
             pp,
             now=now,
             extractor_version=EXTRACTOR_VERSION,
-            normalizer_version=NORMALIZER_VERSION,
+            normalizer_version=normalizer_version(),
             profile=profile,
             cfg=cfg,
         )
@@ -1218,7 +1218,7 @@ def run(
             pp,
             now=now,
             extractor_version=EXTRACTOR_VERSION,
-            normalizer_version=NORMALIZER_VERSION,
+            normalizer_version=normalizer_version(),
             profile=profile,
             cfg=cfg,
             only_urls=only_urls,

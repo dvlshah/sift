@@ -57,9 +57,8 @@ def eval_plan_decision_correctness() -> PlanDecisionCorrectnessResult:
     from sift.config import IndexConfig, TierConfig
     from sift.classify import CLASSIFIER_VERSION
     from sift.extract import EXTRACTOR_VERSION
-    from sift.normalize import NORMALIZER_VERSION
+    from sift.normalize import normalizer_version
     from sift import decide as decide_mod
-    from sift import sites as sites_mod
     from sift import paths
 
     # Set up an in-memory-ish manifest in a temp dir
@@ -151,7 +150,7 @@ def eval_plan_decision_correctness() -> PlanDecisionCorrectnessResult:
         plan_phase(
             conn, plan_path, now=now,
             extractor_version=EXTRACTOR_VERSION,
-            normalizer_version=NORMALIZER_VERSION,
+            normalizer_version=normalizer_version(),
             profile=GenericProfile(),
             cfg=cfg,
         )

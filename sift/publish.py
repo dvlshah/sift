@@ -40,7 +40,7 @@ from ._io import (
 from .classify import CLASSIFIER_VERSION
 from .extract import EXTRACTOR_VERSION, hash_normalized_body
 from .manifest import counts_by_state, counts_by_tier, iter_all, now_utc
-from .normalize import NORMALIZER_VERSION
+from .normalize import normalizer_version
 from .sites import current_profile
 
 # Gate thresholds. Module-level mutable so apply_config() can swap them at startup.
@@ -694,7 +694,7 @@ def write_snapshot(
         "versions": {
             "crawler": CRAWLER_VERSION,
             "extractor": EXTRACTOR_VERSION,
-            "normalizer": NORMALIZER_VERSION,
+            "normalizer": normalizer_version(),
             "classifier": CLASSIFIER_VERSION,
             "integrity": integrity.INTEGRITY_VERSION,
         },
