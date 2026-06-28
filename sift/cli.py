@@ -360,6 +360,21 @@ def init(root: Path):
     is_flag=True,
     help="Disable built-in excludes (/sitemap*, /api/*, /print/*, etc.).",
 )
+@click.option(
+    "--from-frontier",
+    is_flag=True,
+    default=False,
+    help="Discover new in-scope URLs by extracting links from already-fetched "
+    "HTML pages (the recursive frontier — for sites with no/incomplete sitemap). "
+    "Run between runs to crawl one hop deeper each pass; use --exclude to fence "
+    "off URL traps (faceted search, calendars).",
+)
+@click.option(
+    "--discover-max-urls",
+    type=int,
+    default=1000,
+    help="Cap new URLs discovered per --from-frontier pass.",
+)
 def seed(
     root: Path,
     config_path: Optional[Path],
@@ -373,6 +388,8 @@ def seed(
     host_allow: tuple[str, ...],
     extra_excludes: tuple[str, ...],
     no_default_excludes: bool,
+    from_frontier: bool,
+    discover_max_urls: int,
 ):
     """Add URLs to the manifest from a discovery dump, a sitemap, or Firecrawl.
 
@@ -404,9 +421,17 @@ def seed(
                 include_subdomains=firecrawl_include_subdomains,
             )
         )
+    # Host allow (CLI wins; else config; else built-in default) — computed here
+    # because the frontier source extracts only in-scope links.
+    allowed_hosts = host_allow or cfg.seed.host_allow
+    if from_frontier:
+        from .sources.frontier import LinkFrontierSource
+        sources.append(LinkFrontierSource(
+            root, allowed_hosts=allowed_hosts, max_urls=discover_max_urls))
     if not sources:
         raise click.UsageError(
-            "provide --from-json, --from-sitemap, --from-domain, or --from-firecrawl-map"
+            "provide --from-json, --from-sitemap, --from-domain, "
+            "--from-firecrawl-map, or --from-frontier"
         )
     conn = open_db(paths.manifest_path(root))
     init_schema(conn)
@@ -417,8 +442,6 @@ def seed(
     if use_defaults:
         patterns = list(DEFAULT_EXCLUDE_PATTERNS) + patterns
     excludes = compile_excludes(tuple(patterns))
-    # Host allow: CLI wins; else config; else built-in default
-    allowed_hosts = host_allow or cfg.seed.host_allow
     # robots.txt Disallow enforcement — respect the source's crawl directives.
     robots_gate = None
     if cfg.crawl.respect_robots:

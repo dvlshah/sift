@@ -92,6 +92,16 @@ All notable changes are documented here. The format follows
   metadata excluded — or pretty-prints a pure data API. Deterministic. Verified on
   24 real content APIs (GOV.UK Content API, Wikipedia REST): 23/24 extracted with
   substantive content, 23/23 byte-deterministic.
+- **Recursive link frontier (`sift seed --from-frontier`)** — crawl sites with no
+  (or an incomplete) `sitemap.xml`, where the only prior option was the Firecrawl
+  `/map` cap of 500 or a hand-rolled URL list. Each pass extracts in-scope
+  `<a href>` links from the HTML pages fetched so far and seeds the new ones as
+  UNSEEN rows; iterating `seed --from-frontier` → `run` crawls one hop deeper each
+  time. Bounded by `--discover-max-urls`; a per-root harvest-state file means a
+  pass only reads pages it hasn't drained. Verified across 22 sites (2,623
+  in-scope links discoverable from homepages alone); a real hop on sitemap-less
+  python.org found 40 new pages from one seed. (Static-HTML links only — a
+  JS-only nav still needs the browser tier.)
 
 ### Changed
 - **Coverage reports the indexed-content fraction, not lifecycle-closed.** The
