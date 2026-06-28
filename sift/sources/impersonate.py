@@ -72,9 +72,11 @@ class CurlCffiScrapePool:
     def escalate_statuses(self) -> tuple[int, ...]:
         return self.cfg.escalate_statuses
 
-    def _get(self, url: str):
-        """Synchronous impersonating GET. Returns a curl_cffi Response, or None
-        on any transport-level failure (DNS, timeout, TLS, connection reset)."""
+    def _get(self, url: str, target: str):
+        """Synchronous impersonating GET with a specific fingerprint ``target``.
+        Returns a curl_cffi Response, or None on any transport-level failure
+        (DNS, timeout, TLS, connection reset, or an unsupported ``target`` — which
+        is caught here so the rotation just skips it)."""
         try:
             from curl_cffi import requests as creq  # optional dep, imported lazily
         except ImportError as e:  # pragma: no cover - exercised via clear message
@@ -84,7 +86,7 @@ class CurlCffiScrapePool:
         try:
             return creq.get(
                 url,
-                impersonate=self.cfg.impersonate,
+                impersonate=target,
                 timeout=self.cfg.timeout_sec,
                 allow_redirects=True,
             )
@@ -99,60 +101,78 @@ class CurlCffiScrapePool:
         allowed_hosts: Optional[frozenset[str]] = None,
     ) -> "FetchResult":
         """Impersonation-fetch ``inp.url``, write the raw blob, return a
-        FetchResult mirroring the native success path. Raises
-        :class:`EscalateError` on block status / thin body / off-allowlist
-        redirect / transport failure so the ladder continues."""
+        FetchResult mirroring the native success path. Tries the configured
+        fingerprint, then ``impersonate_fallbacks`` on a block status / transport
+        failure (a 403 often clears on a different TLS profile) before giving up.
+        Raises :class:`EscalateError` on a thin body / off-allowlist redirect /
+        oversize body / exhausted fingerprints so the ladder continues."""
         from ..fetch import FetchResult, MAX_BODY_BYTES, store_body
         from ..manifest import now_utc
         from ..quality import looks_thin
 
         self._calls_attempted += 1
-        async with self._sem:
-            async with self._limiter:
-                resp = await asyncio.to_thread(self._get, inp.url)
+        # Configured target first, then the diverse fallbacks (de-duped, order kept).
+        targets: list[str] = []
+        for t in (self.cfg.impersonate, *self.cfg.impersonate_fallbacks):
+            if t and t not in targets:
+                targets.append(t)
+        last_reason = "impersonate transport failure"
 
-        if resp is None:
-            raise EscalateError("impersonate transport failure")
-        status = getattr(resp, "status_code", 0)
-        if status < 200 or status >= 300:
-            raise EscalateError(f"impersonate http-{status}")
+        for target in targets:
+            async with self._sem:
+                async with self._limiter:
+                    resp = await asyncio.to_thread(self._get, inp.url, target)
 
-        # SSRF: curl_cffi followed redirects, so validate the FINAL host against
-        # the allow-list before storing — same guard as the native 2xx path.
-        if allowed_hosts is not None:
-            final_host = (urlparse(str(resp.url)).netloc or "").lower()
-            if final_host and final_host not in allowed_hosts:
-                raise EscalateError(f"impersonate redirect-off-allowlist:{final_host}")
+            if resp is None:
+                last_reason = f"impersonate[{target}] transport-failure"
+                continue  # rotate to a different fingerprint
+            status = getattr(resp, "status_code", 0)
+            if status in self.cfg.escalate_statuses:
+                last_reason = f"impersonate[{target}] http-{status}"
+                continue  # block status — a different TLS profile may clear it
+            if status < 200 or status >= 300:
+                # A definite, non-block failure (404 / 451 / other 5xx): rotating
+                # the fingerprint won't change it, so stop and escalate.
+                raise EscalateError(f"impersonate http-{status}")
 
-        body = (
-            resp.content
-            if isinstance(resp.content, bytes)
-            else resp.content.encode("utf-8")
-        )
-        if len(body) > MAX_BODY_BYTES:
-            raise EscalateError(f"impersonate body-too-large:{len(body)}")
+            # 2xx. The remaining gates are fingerprint-independent — decide here,
+            # never keep rotating (it would only re-hammer the host).
+            if allowed_hosts is not None:
+                final_host = (urlparse(str(resp.url)).netloc or "").lower()
+                if final_host and final_host not in allowed_hosts:
+                    raise EscalateError(f"impersonate redirect-off-allowlist:{final_host}")
 
-        ct = resp.headers.get("content-type")
-        if looks_thin(body, ct, self.cfg.thin_text_threshold):
-            # Same shell/challenge the native path saw — let the next tier (a
-            # real browser / Firecrawl) try to render it.
-            raise EscalateError("impersonate still-thin")
+            body = (
+                resp.content
+                if isinstance(resp.content, bytes)
+                else resp.content.encode("utf-8")
+            )
+            if len(body) > MAX_BODY_BYTES:
+                raise EscalateError(f"impersonate body-too-large:{len(body)}")
 
-        raw_hash, n_bytes = store_body(root, body)
-        self._calls_succeeded += 1
-        return FetchResult(
-            url=inp.url,
-            decision=inp.decision,
-            status=int(status),
-            etag=resp.headers.get("etag"),
-            last_modified=resp.headers.get("last-modified"),
-            raw_hash=raw_hash,
-            raw_bytes=n_bytes,
-            fetched_at=now_utc(),
-            error=None,
-            browser_version=CURL_CFFI_FETCHER_VERSION,
-            content_type=ct,
-        )
+            ct = resp.headers.get("content-type")
+            if looks_thin(body, ct, self.cfg.thin_text_threshold):
+                # A JS-challenge shell — a different TLS fingerprint can't render
+                # JS, so escalate to a real browser instead of re-hammering.
+                raise EscalateError("impersonate still-thin")
+
+            raw_hash, n_bytes = store_body(root, body)
+            self._calls_succeeded += 1
+            return FetchResult(
+                url=inp.url,
+                decision=inp.decision,
+                status=int(status),
+                etag=resp.headers.get("etag"),
+                last_modified=resp.headers.get("last-modified"),
+                raw_hash=raw_hash,
+                raw_bytes=n_bytes,
+                fetched_at=now_utc(),
+                error=None,
+                browser_version=CURL_CFFI_FETCHER_VERSION,
+                content_type=ct,
+            )
+
+        raise EscalateError(last_reason)
 
     async def aclose(self) -> None:
         """Symmetry with the other pools; curl_cffi sessions are per-call."""

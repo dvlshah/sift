@@ -67,6 +67,14 @@ All notable changes are documented here. The format follows
 - **Changelog-continuity gate** — publish refuses a changelog genesis change or
   length regression versus the prior published snapshot, closing a
   truncate/re-genesis forgery of the append-only history.
+- **Impersonate-target rotation** — the curl_cffi tier now retries a short,
+  diverse fingerprint fallback (`[crawl.impersonate].impersonate_fallbacks`,
+  default `chrome124`, `safari17_0`) on a block status (403/429/503) before
+  escalating to the browser/Firecrawl tier — a 403 often clears on a different
+  TLS profile (verified live: `hermes.com` 403→200), recovering fingerprint-
+  blocked hosts for free. A thin 200 (JS-challenge shell) escalates immediately;
+  set `impersonate_fallbacks = []` to disable. Across a 27-site A/B, free
+  rescues rose from 8 to 9 with no regressions.
 
 ### Changed
 - **Coverage reports the indexed-content fraction, not lifecycle-closed.** The

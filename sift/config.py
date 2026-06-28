@@ -78,6 +78,11 @@ class ImpersonateConfig:
     """
     enabled: bool = False
     impersonate: str = "chrome"          # curl_cffi target: chrome|safari|edge|...
+    # On a block status, retry with these diverse fingerprints before escalating
+    # to the (browser/paid) tier — a 403 often clears on a different TLS profile
+    # (verified: hermes.com is 403 on chrome but 200 on chrome124/safari17_0).
+    # Unsupported targets degrade gracefully (skipped). Empty list disables it.
+    impersonate_fallbacks: tuple[str, ...] = ("chrome124", "safari17_0")
     escalate_statuses: tuple[int, ...] = (403, 429, 503)
     thin_text_threshold: int = 500       # pool's own re-check after impersonating
     rate_per_sec: float = 1.0
@@ -263,6 +268,9 @@ def _parse_impersonate_config(raw: dict[str, Any]) -> ImpersonateConfig:
     return ImpersonateConfig(
         enabled=bool(raw.get("enabled", False)),
         impersonate=str(raw.get("impersonate", "chrome")),
+        impersonate_fallbacks=tuple(
+            str(t) for t in raw.get("impersonate_fallbacks", ("chrome124", "safari17_0"))
+        ),
         escalate_statuses=tuple(int(s) for s in raw.get("escalate_statuses", (403, 429, 503))),
         thin_text_threshold=int(raw.get("thin_text_threshold", 500)),
         rate_per_sec=float(raw.get("rate_per_sec", 1.0)),
