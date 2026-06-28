@@ -630,8 +630,13 @@ async def _fetch_browser(
     # open redirect / JS navigation could otherwise land us on an internal or
     # cloud-metadata endpoint whose DOM we'd store under inp.url.
     if allowed_hosts is not None:
+        # Fail CLOSED on an empty/opaque final_url (about:blank / data: from a
+        # failed navigation). Unlike the native path — whose completed response
+        # always carries a host — the browser can legitimately report a hostless
+        # final_url, and a no-navigation render already falls back to the on-list
+        # inp.url (browser.py), so refusing the opaque case loses no real content.
         final_host = (urlparse(page.final_url).hostname or "").lower()
-        if final_host and final_host not in allowed_hosts:
+        if final_host not in allowed_hosts:
             return _no_body_result(
                 inp,
                 page.status_code,

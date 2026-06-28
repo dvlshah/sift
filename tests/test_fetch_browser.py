@@ -182,6 +182,39 @@ class TestFetchBrowserSsrfGuard:
         assert result.error is None
         assert result.raw_hash is not None
 
+    @pytest.mark.asyncio
+    async def test_opaque_final_url_fails_closed(self, tmp_path):
+        # A failed navigation reports an opaque final_url (about:blank) with no
+        # host. With an allow-list set, that must NOT be stored (fail closed).
+        inp = FetchInput(url="https://x/spa/page", decision="FETCH",
+                         etag=None, last_modified=None)
+        page = _rendered("about:blank", html="<html></html>")
+        with patch("sift.browser.render", return_value=page):
+            result = await _fetch_browser(
+                inp, tmp_path, _SpaProfile(), _FakePool(),
+                allowed_hosts=frozenset({"x"}),
+            )
+        assert result.raw_hash is None
+        assert result.error is not None and "redirect-off-allowlist" in result.error
+
+    @pytest.mark.asyncio
+    async def test_escalation_path_enforces_allowlist(self, tmp_path):
+        # The escalation rung threads allowed_hosts into _fetch_browser too: an
+        # off-list final host yields a no-body result, so _escalate_browser_tier
+        # raises EscalateError (the ladder falls through) instead of using it.
+        from sift.fetch import _escalate_browser_tier
+        from sift.sources.impersonate import EscalateError
+        inp = FetchInput(url="https://x/spa/page", decision="FETCH",
+                         etag=None, last_modified=None)
+        page = _rendered("https://169.254.169.254/latest/meta-data/",
+                         html="<html>SECRET</html>")
+        with patch("sift.browser.render", return_value=page):
+            with pytest.raises(EscalateError):
+                await _escalate_browser_tier(
+                    inp, tmp_path, _SpaProfile(), _FakePool(),
+                    0, allowed_hosts=frozenset({"x"}),
+                )
+
 
 # ---------------------------------------------------------------------------
 # fetch_all dispatch: profile.requires_browser routes per URL.
