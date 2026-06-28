@@ -121,7 +121,9 @@ class SiteProfile:
         content-type, else HTML).
 
         Return ``"markdown"``, ``"pdf"``, ``"json"``, or ``"html"`` to force an
-        extractor (``"json"`` routes to the API-as-content lane).
+        extractor (``"json"`` routes to the API-as-content lane — classify it
+        from durable signals such as URL shape, never the Content-Type, so the
+        re-extract path reproduces the same routing).
         The main use is **markdown pass-through**: endpoints that already serve
         Markdown (``.md`` docs variants, ``llms.txt``) get mangled by the HTML
         extractor (trafilatura), so they should be stored as-is.

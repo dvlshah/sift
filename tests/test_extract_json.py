@@ -65,14 +65,17 @@ class TestJsonExtract:
         assert "standard VAT rate is 20%" in md
         assert "noise-abc-123" not in md  # only the content field, not metadata
 
-    def test_largest_html_field_wins(self):
+    def test_all_html_fields_concatenated_not_just_largest(self):
+        # Completeness: every HTML-bearing field is included, not only the largest
+        # (the bug that silently dropped multi-part GOV.UK guide sections).
+        summary = "<p>" + "This summary paragraph has plenty of words to survive. " * 4 + "</p>"
         body = json.dumps({
-            "summary": "<p>tiny summary</p>",
+            "summary": summary,
             "details": {"body": _BODY},
         }).encode()
         md, _ = extract_json(body, "https://x/api")
-        assert "standard VAT rate is 20%" in md
-        assert "tiny summary" not in md
+        assert "standard VAT rate is 20%" in md        # the body field
+        assert "summary paragraph has plenty" in md    # AND the summary (not dropped)
 
     def test_data_api_pretty_printed(self):
         body = json.dumps({"name": "rate table", "rate": 20, "unit": "percent"}).encode()
@@ -97,3 +100,28 @@ class TestJsonExtract:
         assert "json-v1" in EXTRACTOR_VERSION_JSON
         assert EXTRACTOR_VERSION_HTML in EXTRACTOR_VERSION_JSON
         assert EXTRACTOR_VERSION_JSON != EXTRACTOR_VERSION_HTML
+
+    def test_multipart_html_fields_all_included(self):
+        # GOV.UK-guide shape: each section in details.parts[]. Every part must
+        # survive — the bug was keeping only the single largest field.
+        p1 = "<h2>Part one</h2><p>" + "First section content here. " * 8 + "</p>"
+        p2 = "<h2>Part two</h2><p>" + "Second section content here. " * 8 + "</p>"
+        body = json.dumps({"title": "Guide", "details": {"parts": [
+            {"title": "one", "body": p1}, {"title": "two", "body": p2}]}}).encode()
+        md, _ = extract_json(body, "https://www.gov.uk/api/content/guide")
+        assert "First section content" in md
+        assert "Second section content" in md  # the 2nd part is NOT dropped
+
+    def test_thin_html_field_does_not_leak_metadata(self):
+        # An HTML field too thin to extract must not fall through to a JSON dump
+        # of the metadata (content_id, analytics ids, ...).
+        body = json.dumps({"title": "T", "content_id": "secret-meta-xyz",
+                           "details": {"body": "<p>.</p>"}}).encode()
+        md, _ = extract_json(body, "https://x/api")
+        assert "secret-meta-xyz" not in (md or "")
+
+    def test_bom_prefixed_json(self):
+        raw = b"\xef\xbb\xbf" + json.dumps({"name": "rates", "v": 1}).encode()
+        assert _json_applies(_inp(raw=raw))         # BOM doesn't defeat routing
+        md, title = extract_json(raw, "https://x/api")
+        assert md is not None and title == "rates"  # ...or json.loads

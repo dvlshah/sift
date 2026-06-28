@@ -357,24 +357,32 @@ def extract_json(body: bytes, url: str) -> tuple[Optional[str], Optional[str]]:
     """API-as-content. Returns (markdown, title) or (None, None).
 
     Deliberate content APIs (GOV.UK Content API, WordPress/Drupal REST, ...) carry
-    the page body as an HTML field inside JSON. We find the largest HTML-bearing
-    field and run it through the HTML extractor — clean markdown + tables. When
-    there's no HTML field (a pure data API) we emit a deterministic pretty-print
-    so the endpoint still indexes. Deterministic: a pure function of the cached
-    raw bytes (json.loads preserves order; first-max over a stable DFS).
+    the page body as HTML field(s) inside JSON. We concatenate ALL HTML-bearing
+    fields (in DFS order) and run them through the HTML extractor — clean markdown
+    + tables. A pure data API (no HTML field) is pretty-printed so the endpoint
+    still indexes. Deterministic: a pure function of the cached raw bytes
+    (json.loads preserves order; the DFS collection order is stable).
     """
     try:
-        data = json.loads(body.decode("utf-8", "replace"))
+        # utf-8-sig so a leading BOM doesn't defeat json.loads.
+        data = json.loads(body.decode("utf-8-sig", "replace"))
     except Exception:
         return None, None
     title = _json_title(data, url)
     htmls: list[str] = []
     _collect_html_fields(data, htmls)
     if htmls:
-        primary = max(htmls, key=len)  # first-max under a stable DFS -> deterministic
-        md, _ = extract_markdown(primary.encode("utf-8"), url)
+        # Concatenate every HTML-bearing field in DFS order, NOT just the largest:
+        # multi-part pages (GOV.UK guides put each section in details.parts[])
+        # would otherwise lose every part but one and be signed as complete.
+        md, _ = extract_markdown("\n".join(htmls).encode("utf-8"), url)
         if md and md.strip():
             return f"# {title}\n\n{md}", title
+        # Had content fields but extraction came back empty -> no-content. Do NOT
+        # fall through to the data-API pretty-print below, which would emit the
+        # JSON's metadata (content_id, analytics ids, ...) as if it were content.
+        return None, None
+    # No HTML content field at all -> a pure data API; pretty-print its data.
     pretty = json.dumps(data, indent=2, ensure_ascii=False)
     if len(pretty.strip()) <= 2:  # {} or []
         return None, None
@@ -417,6 +425,8 @@ def _json_applies(inp: ExtractInput) -> bool:
     if inp.body_kind is not None:
         return False
     head = inp.raw[:512].lstrip(b"\x00 \t\r\n\f\v")
+    if head[:3] == b"\xef\xbb\xbf":  # a UTF-8 BOM may precede the JSON document
+        head = head[3:].lstrip(b" \t\r\n\f\v")
     return head[:1] in (b"{", b"[")
 
 
