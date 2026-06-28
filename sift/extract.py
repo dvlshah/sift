@@ -78,6 +78,10 @@ from .sites import current_profile
 #         platform.claude.com).
 EXTRACTOR_VERSION_HTML = f"trafilatura-{trafilatura.__version__}-cfg5-rsc"
 EXTRACTOR_VERSION_PDF  = f"pypdf-{_PYPDF_VERSION}+plumber-{_PDFPLUMBER_VERSION}-tbl1"
+# API-as-content delegates its primary HTML field to the HTML extractor, so its
+# identity embeds EXTRACTOR_VERSION_HTML (a trafilatura/config change re-derives
+# JSON content too).
+EXTRACTOR_VERSION_JSON = f"json-v1+{EXTRACTOR_VERSION_HTML}"
 # Pass-through for endpoints that already serve Markdown (no extraction needed).
 EXTRACTOR_VERSION_MD   = "passthrough-md-v1"
 
@@ -321,6 +325,62 @@ def extract_passthrough_md(body: bytes, url: str) -> tuple[Optional[str], Option
     return text, (title or None)
 
 
+_JSON_HTML_FIELD = re.compile(
+    r"</(?:p|div|h[1-6]|ul|ol|li|table|tr|td|section|article)>", re.I
+)
+
+
+def _collect_html_fields(obj, found: list[str]) -> None:
+    """Depth-first collect of JSON string values that look like HTML."""
+    if isinstance(obj, str):
+        if _JSON_HTML_FIELD.search(obj):
+            found.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _collect_html_fields(v, found)
+    elif isinstance(obj, list):
+        for v in obj:
+            _collect_html_fields(v, found)
+
+
+def _json_title(obj, url: str) -> str:
+    if isinstance(obj, dict):
+        for k in ("title", "name", "headline", "label"):
+            v = obj.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    from urllib.parse import urlparse as _u
+    return _u(url).path.rsplit("/", 1)[-1] or "API document"
+
+
+def extract_json(body: bytes, url: str) -> tuple[Optional[str], Optional[str]]:
+    """API-as-content. Returns (markdown, title) or (None, None).
+
+    Deliberate content APIs (GOV.UK Content API, WordPress/Drupal REST, ...) carry
+    the page body as an HTML field inside JSON. We find the largest HTML-bearing
+    field and run it through the HTML extractor — clean markdown + tables. When
+    there's no HTML field (a pure data API) we emit a deterministic pretty-print
+    so the endpoint still indexes. Deterministic: a pure function of the cached
+    raw bytes (json.loads preserves order; first-max over a stable DFS).
+    """
+    try:
+        data = json.loads(body.decode("utf-8", "replace"))
+    except Exception:
+        return None, None
+    title = _json_title(data, url)
+    htmls: list[str] = []
+    _collect_html_fields(data, htmls)
+    if htmls:
+        primary = max(htmls, key=len)  # first-max under a stable DFS -> deterministic
+        md, _ = extract_markdown(primary.encode("utf-8"), url)
+        if md and md.strip():
+            return f"# {title}\n\n{md}", title
+    pretty = json.dumps(data, indent=2, ensure_ascii=False)
+    if len(pretty.strip()) <= 2:  # {} or []
+        return None, None
+    return f"# {title}\n\n```json\n{pretty}\n```", title
+
+
 # ---- Primary-strategy registry --------------------------------------------
 # The competing primaries, in priority order. ``select_primary`` returns
 # the first whose predicate matches; the HTML strategy is the terminal
@@ -343,6 +403,19 @@ def _pdf_applies(inp: ExtractInput) -> bool:
     )
 
 
+def _json_applies(inp: ExtractInput) -> bool:
+    """API-as-content: the profile classified this body as JSON, OR it deferred
+    and the response is a JSON content-type (application/json, .../*+json). The
+    operator seeds API endpoints deliberately, so the content-type is the routing
+    signal; extract_json degrades to (None, None) on a parse failure."""
+    if inp.body_kind == "json":
+        return True
+    if inp.body_kind is not None:
+        return False
+    ct = (inp.content_type or "").split(";", 1)[0].strip().lower()
+    return ct in ("application/json", "text/json") or ct.endswith("+json")
+
+
 def _html_applies(inp: ExtractInput) -> bool:
     """HTML (trafilatura + enrichers): the terminal fallback — handles
     everything the markdown/PDF predicates didn't claim."""
@@ -354,6 +427,8 @@ PRIMARY_STRATEGIES: tuple[PrimaryStrategy, ...] = (
                     _md_applies, extract_passthrough_md),
     PrimaryStrategy("pdf", "pdf", EXTRACTOR_VERSION_PDF,
                     _pdf_applies, extract_pdf),
+    PrimaryStrategy("json-api", "json", EXTRACTOR_VERSION_JSON,
+                    _json_applies, extract_json),
     PrimaryStrategy("html-trafilatura", "html", EXTRACTOR_VERSION_HTML,
                     _html_applies, extract_markdown),
 )

@@ -117,9 +117,11 @@ class SiteProfile:
 
     def body_kind(self, url: str, *, content_type: Optional[str] = None) -> Optional[str]:
         """Classify the fetched body for the extract phase, or ``None`` to let
-        the core dispatcher sniff it (PDF by magic bytes / URL, else HTML).
+        the core dispatcher sniff it (PDF by magic bytes / URL, JSON by
+        content-type, else HTML).
 
-        Return ``"markdown"``, ``"pdf"``, or ``"html"`` to force an extractor.
+        Return ``"markdown"``, ``"pdf"``, ``"json"``, or ``"html"`` to force an
+        extractor (``"json"`` routes to the API-as-content lane).
         The main use is **markdown pass-through**: endpoints that already serve
         Markdown (``.md`` docs variants, ``llms.txt``) get mangled by the HTML
         extractor (trafilatura), so they should be stored as-is.

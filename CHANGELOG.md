@@ -85,6 +85,13 @@ All notable changes are documented here. The format follows
   25/26 recovered ≥1 table (the i1040 instructions: 246; the i1040 tax tables:
   172). `EXTRACTOR_VERSION_PDF` is bumped, so existing PDFs re-extract from cached
   raw on the next run.
+- **API-as-content (`json` extract strategy)** — sift now ingests deliberately
+  seeded content APIs. A response with a JSON content-type (or a profile
+  `body_kind="json"`) routes to a `json-api` strategy that finds the page's HTML
+  content field and runs it through the HTML extractor — clean markdown + tables,
+  metadata excluded — or pretty-prints a pure data API. Deterministic. Verified on
+  24 real content APIs (GOV.UK Content API, Wikipedia REST): 23/24 extracted with
+  substantive content, 23/23 byte-deterministic.
 
 ### Changed
 - **Coverage reports the indexed-content fraction, not lifecycle-closed.** The
