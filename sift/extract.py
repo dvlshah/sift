@@ -48,7 +48,7 @@ from .classify import (
 from ._io import atomic_write_text, sha256_hex
 from .fetch import FetchResult, read_raw_blob
 from .manifest import get_row
-from .normalize import NORMALIZER_VERSION, normalize_for_hash
+from .normalize import normalize_for_hash, normalizer_version
 from .sites import current_profile
 
 # Per-extractor versions. Each markdown row records the version of whatever
@@ -113,7 +113,7 @@ class ExtractResult:
         extractor_version, ok and reason vary."""
         return cls(
             url=url, raw_hash=raw_hash, content_hash=None, title=None, n_chars=0,
-            extractor_version=extractor_version, normalizer_version=NORMALIZER_VERSION,
+            extractor_version=extractor_version, normalizer_version=normalizer_version(),
             ok=ok, reason=reason,
         )
 
@@ -499,16 +499,17 @@ def _extract_one(
     primary = select_primary(inp, PRIMARY_STRATEGIES)
     current_extractor_version = primary.version
     extract_kind = primary.kind
+    norm_v = normalizer_version()  # effective version: profile-fingerprinted
 
     # Short-circuit: raw_hash unchanged AND extractor/normalizer versions match
     # AND we have a content_hash on file -> nothing to do.
     if (prev is not None and prev.raw_hash == fetch.raw_hash
             and prev.content_hash and prev.extractor_version == current_extractor_version
-            and prev.normalizer_version == NORMALIZER_VERSION):
+            and prev.normalizer_version == norm_v):
         return ExtractResult(
             url=url, raw_hash=fetch.raw_hash, content_hash=prev.content_hash,
             title=None, n_chars=0,
-            extractor_version=current_extractor_version, normalizer_version=NORMALIZER_VERSION,
+            extractor_version=current_extractor_version, normalizer_version=norm_v,
             ok=True, reason="unchanged-raw",
         )
 
@@ -536,7 +537,7 @@ def _extract_one(
     frontmatter = build_frontmatter(
         url=url, title=title, fetched_at=fetch.fetched_at, http_status=fetch.status,
         raw_hash=fetch.raw_hash, content_hash=content_hash,
-        extractor_version=current_extractor_version, normalizer_version=NORMALIZER_VERSION,
+        extractor_version=current_extractor_version, normalizer_version=norm_v,
         crawler_version=crawler_version, tier=tier, parent_guide_=pg,
         sitemap_lastmod=sm_lastmod,
         audience=aud, fy_years=fys, anchors=anchor_slugs,
@@ -550,7 +551,7 @@ def _extract_one(
         "content_hash": f"sha256:{content_hash}",
         "crawler_version": crawler_version,
         "extractor_version": current_extractor_version,
-        "normalizer_version": NORMALIZER_VERSION,
+        "normalizer_version": norm_v,
         "tier": tier, "parent_guide": pg,
         "audience": aud, "fy_years": fys,
         "anchors": anchor_slugs,
@@ -560,7 +561,7 @@ def _extract_one(
     return ExtractResult(
         url=url, raw_hash=fetch.raw_hash, content_hash=content_hash,
         title=title, n_chars=len(annotated_md),
-        extractor_version=current_extractor_version, normalizer_version=NORMALIZER_VERSION,
+        extractor_version=current_extractor_version, normalizer_version=norm_v,
         ok=True, reason=f"new-content-{extract_kind}",
     )
 

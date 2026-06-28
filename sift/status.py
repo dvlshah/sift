@@ -16,7 +16,7 @@ from . import CRAWLER_VERSION, paths
 from .classify import CLASSIFIER_VERSION
 from .extract import EXTRACTOR_VERSION
 from .manifest import counts_by_state, counts_by_tier, init_schema, open_db
-from .normalize import NORMALIZER_VERSION
+from .normalize import normalizer_version
 
 
 # Module-level cache so we only resolve the runtime Chromium version once per
@@ -133,7 +133,7 @@ def compute_status_summary(root: Path) -> dict[str, Any]:
         "versions": {
             "crawler": CRAWLER_VERSION,
             "extractor": EXTRACTOR_VERSION,
-            "normalizer": NORMALIZER_VERSION,
+            "normalizer": normalizer_version(),
             "classifier": CLASSIFIER_VERSION,
             "browser": BROWSER_VERSION,
             "browser_runtime_chromium": _resolve_runtime_chromium(),

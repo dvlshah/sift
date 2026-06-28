@@ -22,14 +22,41 @@ extract phase will recompute them from cached raw HTML without refetching.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 
 from .sites import current_profile
 
-NORMALIZER_VERSION = "v2"  # bumped when dynamic patterns moved to profile
+NORMALIZER_VERSION = "v2"  # base algorithm version; effective = normalizer_version()
 
 _BLANK_LINE_RUN = re.compile(r"\n{3,}")
+
+
+def normalizer_version() -> str:
+    """Effective normalizer version: the base algorithm version plus a
+    fingerprint of the active profile's ``dynamic_patterns``.
+
+    ``normalize_for_hash`` strips the active profile's ``dynamic_patterns``, so
+    the content_hash depends on them — but the base version string can't see
+    them. Without this fingerprint, editing a profile's patterns would leave
+    every stored ``normalizer_version`` reading ``"v2"``, and the idempotency
+    short-circuit (decide/extract compare the stored version against this one)
+    would skip re-extraction — silently leaving content_hashes that no longer
+    match what the normalizer now produces.
+
+    A profile with no patterns (the pipeline default) returns the bare base
+    version, so existing zero-pattern indexes don't re-extract on upgrade.
+    """
+    pats = current_profile().dynamic_patterns
+    if not pats:
+        return NORMALIZER_VERSION
+    h = hashlib.sha256()
+    for pat in pats:
+        h.update(pat.pattern.encode("utf-8"))
+        h.update(str(pat.flags).encode("utf-8"))  # flags change matching too
+        h.update(b"\x00")
+    return f"{NORMALIZER_VERSION}+{h.hexdigest()[:12]}"
 
 
 def normalize_for_hash(text: str) -> str:
