@@ -239,7 +239,7 @@ BROWSER_VER = "browser-test"
 def _stub_browser_success(monkeypatch):
     """Patch _fetch_browser to render real content into the blob store."""
 
-    async def fake(inp, root, profile, pool):
+    async def fake(inp, root, profile, pool, allowed_hosts=None):
         from sift.fetch import FetchResult, store_body
 
         raw_hash, n = store_body(
@@ -263,7 +263,7 @@ def _stub_browser_success(monkeypatch):
 
 
 def _stub_browser_failure(monkeypatch):
-    async def fake(inp, root, profile, pool):
+    async def fake(inp, root, profile, pool, allowed_hosts=None):
         from sift.fetch import FetchResult
 
         return FetchResult(
