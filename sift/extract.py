@@ -405,15 +405,19 @@ def _pdf_applies(inp: ExtractInput) -> bool:
 
 def _json_applies(inp: ExtractInput) -> bool:
     """API-as-content: the profile classified this body as JSON, OR it deferred
-    and the response is a JSON content-type (application/json, .../*+json). The
-    operator seeds API endpoints deliberately, so the content-type is the routing
-    signal; extract_json degrades to (None, None) on a parse failure."""
+    and the raw body sniffs as a JSON document (starts with ``{`` or ``[``).
+
+    We sniff the RAW BYTES, not the Content-Type: content_type isn't persisted in
+    the manifest and is ``None`` on the re-extract path, so routing must key on
+    the durable raw blob — otherwise a JSON row would re-route to HTML on
+    re-extract and break determinism. (Mirrors how ``_pdf_applies`` sniffs magic
+    bytes rather than trusting the header.)"""
     if inp.body_kind == "json":
         return True
     if inp.body_kind is not None:
         return False
-    ct = (inp.content_type or "").split(";", 1)[0].strip().lower()
-    return ct in ("application/json", "text/json") or ct.endswith("+json")
+    head = inp.raw[:512].lstrip(b"\x00 \t\r\n\f\v")
+    return head[:1] in (b"{", b"[")
 
 
 def _html_applies(inp: ExtractInput) -> bool:

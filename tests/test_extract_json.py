@@ -18,29 +18,38 @@ _BODY = ("<h2>VAT rates</h2><p>The standard VAT rate is 20%. Most goods and "
          "few are zero-rated. Check the detailed list before you file.</p>")
 
 
-def _inp(content_type="application/json", body_kind=None, raw=b"{}"):
+def _inp(raw=b'{"a": 1}', content_type=None, body_kind=None):
     return ExtractInput(raw=raw, url="https://x/api", content_type=content_type,
                         body_kind=body_kind)
 
 
 class TestJsonRouting:
-    def test_json_content_type_routes_to_json(self):
-        assert select_primary(_inp("application/json"), PRIMARY_STRATEGIES).kind == "json"
+    def test_json_object_body_routes_to_json(self):
+        assert select_primary(_inp(raw=b'{"a": 1}'), PRIMARY_STRATEGIES).kind == "json"
 
-    def test_vendor_json_content_types(self):
-        assert _json_applies(_inp("application/ld+json"))
-        assert _json_applies(_inp("application/hal+json; charset=utf-8"))
+    def test_json_array_body_sniffs_json(self):
+        assert _json_applies(_inp(raw=b'[1, 2, 3]'))
 
-    def test_profile_body_kind_json(self):
-        assert _json_applies(_inp(content_type="text/plain", body_kind="json"))
+    def test_leading_whitespace_still_sniffs_json(self):
+        assert _json_applies(_inp(raw=b'\n\t  {"a": 1}'))
+
+    def test_routing_is_content_type_independent(self):
+        # The re-extract path has no content_type — routing MUST key on the raw
+        # blob, else a JSON row re-routes to HTML and breaks determinism.
+        assert _json_applies(_inp(raw=b'{"a": 1}', content_type=None))
+        assert select_primary(_inp(raw=b'{"a": 1}', content_type=None),
+                              PRIMARY_STRATEGIES).kind == "json"
+
+    def test_profile_body_kind_json_overrides(self):
+        assert _json_applies(_inp(raw=b"not json at all", body_kind="json"))
 
     def test_html_not_routed_to_json(self):
-        assert not _json_applies(_inp(content_type="text/html"))
-        s = select_primary(_inp("text/html", raw=b"<html>hi</html>"), PRIMARY_STRATEGIES)
-        assert s.kind == "html"
+        assert not _json_applies(_inp(raw=b"<html>hi</html>"))
+        assert select_primary(_inp(raw=b"<html>hi</html>", content_type="text/html"),
+                              PRIMARY_STRATEGIES).kind == "html"
 
     def test_profile_claiming_other_kind_blocks_json(self):
-        assert not _json_applies(_inp("application/json", body_kind="markdown"))
+        assert not _json_applies(_inp(raw=b'{"a": 1}', body_kind="markdown"))
 
 
 class TestJsonExtract:
