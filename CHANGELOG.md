@@ -47,6 +47,43 @@ All notable changes are documented here. The format follows
   snapshot's token directly; all are verifiable with plain `openssl ts -verify`.
   Non-fatal by design: a TSA outage logs an "unwitnessed" gate row, never blocks
   the publish. eIDAS-/auditor-recognized format. See `SECURITY.md`.
+- **`[crawl] respect_robots`** — robots.txt `Disallow` is now enforced at seed
+  (default `true`): a disallowed URL never enters the manifest, and a broad
+  `Disallow` correctly overrides a sitemap that lists the path. Uses `protego`
+  (RFC 9309 wildcards + longest-match precedence); `5xx`/`429` back off, a
+  missing/unreachable robots.txt allows all. `skipped_robots` is surfaced in the
+  seed summary. Set `false` only for sources you have permission to index.
+- **Content-admission gate** — a non-empty `2xx` that is actually a bot-challenge
+  interstitial (Cloudflare IUAM, Incapsula, PerimeterX, DataDome) is refused at
+  extract (`admission-challenge-page`) instead of being hashed and signed as real
+  content. A structure-vs-content test (a challenge marker in the raw HTML but
+  not in the extracted prose) keeps real pages — even ones that *discuss* a
+  bot-manager — admitted.
+- **Determinism + derivation-env recording at publish** — a new advisory gate
+  re-extracts a sample straight from the cached raw blobs and compares
+  `content_hash`, catching extractor nondeterminism the stored-markdown hash
+  sample couldn't see; the snapshot now also records the native derivation
+  environment (`python` / `unicode` / `lxml` / `libxml2`).
+- **Changelog-continuity gate** — publish refuses a changelog genesis change or
+  length regression versus the prior published snapshot, closing a
+  truncate/re-genesis forgery of the append-only history.
+
+### Changed
+- **Coverage reports the indexed-content fraction, not lifecycle-closed.** The
+  snapshot publishes `indexed_fraction` (content-bearing FRESH/FROZEN ÷ expected)
+  alongside `resolved_fraction` (includes GONE/SKIPPED) with an explicit
+  `denominator_basis`, so a green `coverage=1.0` can no longer hide rows that
+  resolved to GONE/SKIPPED with no content.
+- **`normalizer_version` fingerprints the active profile's `dynamic_patterns`**
+  (`v2` → `v2+<hash>`), so editing a profile's noise-stripping correctly
+  invalidates stored `content_hash`es instead of silently reusing stale ones.
+  Zero-pattern profiles keep the bare `v2` (no re-extraction churn on upgrade).
+
+### Security
+- **SSRF allow-list enforced on the browser fetch path** — a redirect that lands
+  off the configured host allow-list is dropped (fail-closed, including an opaque
+  `final_url`), matching the native fetcher and preventing link-local/metadata
+  responses from being captured into the corpus.
 
 ## [0.2.0] — Tiered fetch transport
 
