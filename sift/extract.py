@@ -78,6 +78,10 @@ from .sites import current_profile
 #         platform.claude.com).
 EXTRACTOR_VERSION_HTML = f"trafilatura-{trafilatura.__version__}-cfg5-rsc"
 EXTRACTOR_VERSION_PDF  = f"pypdf-{_PYPDF_VERSION}+plumber-{_PDFPLUMBER_VERSION}-tbl1"
+# API-as-content delegates its primary HTML field to the HTML extractor, so its
+# identity embeds EXTRACTOR_VERSION_HTML (a trafilatura/config change re-derives
+# JSON content too).
+EXTRACTOR_VERSION_JSON = f"json-v1+{EXTRACTOR_VERSION_HTML}"
 # Pass-through for endpoints that already serve Markdown (no extraction needed).
 EXTRACTOR_VERSION_MD   = "passthrough-md-v1"
 
@@ -321,6 +325,70 @@ def extract_passthrough_md(body: bytes, url: str) -> tuple[Optional[str], Option
     return text, (title or None)
 
 
+_JSON_HTML_FIELD = re.compile(
+    r"</(?:p|div|h[1-6]|ul|ol|li|table|tr|td|section|article)>", re.I
+)
+
+
+def _collect_html_fields(obj, found: list[str]) -> None:
+    """Depth-first collect of JSON string values that look like HTML."""
+    if isinstance(obj, str):
+        if _JSON_HTML_FIELD.search(obj):
+            found.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _collect_html_fields(v, found)
+    elif isinstance(obj, list):
+        for v in obj:
+            _collect_html_fields(v, found)
+
+
+def _json_title(obj, url: str) -> str:
+    if isinstance(obj, dict):
+        for k in ("title", "name", "headline", "label"):
+            v = obj.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    from urllib.parse import urlparse as _u
+    return _u(url).path.rsplit("/", 1)[-1] or "API document"
+
+
+def extract_json(body: bytes, url: str) -> tuple[Optional[str], Optional[str]]:
+    """API-as-content. Returns (markdown, title) or (None, None).
+
+    Deliberate content APIs (GOV.UK Content API, WordPress/Drupal REST, ...) carry
+    the page body as HTML field(s) inside JSON. We concatenate ALL HTML-bearing
+    fields (in DFS order) and run them through the HTML extractor — clean markdown
+    + tables. A pure data API (no HTML field) is pretty-printed so the endpoint
+    still indexes. Deterministic: a pure function of the cached raw bytes
+    (json.loads preserves order; the DFS collection order is stable).
+    """
+    try:
+        # utf-8-sig so a leading BOM doesn't defeat json.loads.
+        data = json.loads(body.decode("utf-8-sig", "replace"))
+    except Exception:
+        return None, None
+    title = _json_title(data, url)
+    htmls: list[str] = []
+    _collect_html_fields(data, htmls)
+    if htmls:
+        # Concatenate every HTML-bearing field in DFS order, NOT just the largest:
+        # multi-part pages (GOV.UK guides put each section in details.parts[])
+        # would otherwise lose every part but one and be signed as complete.
+        md, _ = extract_markdown("\n".join(htmls).encode("utf-8"), url)
+        if md and md.strip():
+            return f"# {title}\n\n{md}", title
+        # Had content fields but extraction came back empty -> no-content. Do NOT
+        # fall through to the data-API pretty-print below, which would emit the
+        # JSON's metadata (content_id, analytics ids, ...) as if it were content.
+        return None, None
+    # No HTML content field at all -> a pure data API; pretty-print its data.
+    pretty = json.dumps(data, indent=2, ensure_ascii=False)
+    if len(pretty.strip()) <= 2:  # {} or []
+        return None, None
+    return f"# {title}\n\n```json\n{pretty}\n```", title
+
+
 # ---- Primary-strategy registry --------------------------------------------
 # The competing primaries, in priority order. ``select_primary`` returns
 # the first whose predicate matches; the HTML strategy is the terminal
@@ -343,6 +411,25 @@ def _pdf_applies(inp: ExtractInput) -> bool:
     )
 
 
+def _json_applies(inp: ExtractInput) -> bool:
+    """API-as-content: the profile classified this body as JSON, OR it deferred
+    and the raw body sniffs as a JSON document (starts with ``{`` or ``[``).
+
+    We sniff the RAW BYTES, not the Content-Type: content_type isn't persisted in
+    the manifest and is ``None`` on the re-extract path, so routing must key on
+    the durable raw blob — otherwise a JSON row would re-route to HTML on
+    re-extract and break determinism. (Mirrors how ``_pdf_applies`` sniffs magic
+    bytes rather than trusting the header.)"""
+    if inp.body_kind == "json":
+        return True
+    if inp.body_kind is not None:
+        return False
+    head = inp.raw[:512].lstrip(b"\x00 \t\r\n\f\v")
+    if head[:3] == b"\xef\xbb\xbf":  # a UTF-8 BOM may precede the JSON document
+        head = head[3:].lstrip(b" \t\r\n\f\v")
+    return head[:1] in (b"{", b"[")
+
+
 def _html_applies(inp: ExtractInput) -> bool:
     """HTML (trafilatura + enrichers): the terminal fallback — handles
     everything the markdown/PDF predicates didn't claim."""
@@ -354,6 +441,8 @@ PRIMARY_STRATEGIES: tuple[PrimaryStrategy, ...] = (
                     _md_applies, extract_passthrough_md),
     PrimaryStrategy("pdf", "pdf", EXTRACTOR_VERSION_PDF,
                     _pdf_applies, extract_pdf),
+    PrimaryStrategy("json-api", "json", EXTRACTOR_VERSION_JSON,
+                    _json_applies, extract_json),
     PrimaryStrategy("html-trafilatura", "html", EXTRACTOR_VERSION_HTML,
                     _html_applies, extract_markdown),
 )

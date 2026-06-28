@@ -13,6 +13,7 @@ import pytest
 
 from sift.extract import (
     EXTRACTOR_VERSION_HTML,
+    EXTRACTOR_VERSION_JSON,
     EXTRACTOR_VERSION_MD,
     EXTRACTOR_VERSION_PDF,
     PRIMARY_STRATEGIES,
@@ -39,20 +40,22 @@ def _inp(*, raw: bytes = b"<html></html>", url: str = "https://x.test/p",
 # ---- Primary registry shape ----------------------------------------------
 
 class TestRegistryShape:
-    def test_three_primaries_in_priority_order(self):
+    def test_primaries_in_priority_order(self):
         names = [s.name for s in PRIMARY_STRATEGIES]
-        assert names == ["markdown-passthrough", "pdf", "html-trafilatura"]
+        assert names == ["markdown-passthrough", "pdf", "json-api", "html-trafilatura"]
 
     def test_versions_wired_to_constants(self):
         by_name = {s.name: s for s in PRIMARY_STRATEGIES}
         assert by_name["markdown-passthrough"].version == EXTRACTOR_VERSION_MD
         assert by_name["pdf"].version == EXTRACTOR_VERSION_PDF
+        assert by_name["json-api"].version == EXTRACTOR_VERSION_JSON
         assert by_name["html-trafilatura"].version == EXTRACTOR_VERSION_HTML
 
     def test_kinds_match_reason_labels(self):
         by_name = {s.name: s for s in PRIMARY_STRATEGIES}
         assert by_name["markdown-passthrough"].kind == "md"
         assert by_name["pdf"].kind == "pdf"
+        assert by_name["json-api"].kind == "json"
         assert by_name["html-trafilatura"].kind == "html"
 
     def test_html_is_terminal_fallback(self):
@@ -111,7 +114,6 @@ class TestSelectPrimary:
     def test_first_applicable_wins_on_ordering(self):
         # Construct a registry where two predicates match; the first
         # must win.
-        hits = []
         a = PrimaryStrategy("a", "a", "va", lambda i: True,
                             lambda raw, url: ("A", None))
         b = PrimaryStrategy("b", "b", "vb", lambda i: True,
