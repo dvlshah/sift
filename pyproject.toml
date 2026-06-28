@@ -24,6 +24,7 @@ dependencies = [
     "selectolax>=0.3",
     "mcp>=1.0",
     "pypdf>=4.0",
+    "pdfplumber>=0.11",
     "jsonschema>=4",
     "protego>=0.3",
 ]

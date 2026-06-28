@@ -31,6 +31,13 @@ except ImportError:  # pragma: no cover - pypdf is in deps now
     pypdf = None  # type: ignore[assignment]
     _PYPDF_VERSION = "missing"
 
+try:
+    import pdfplumber
+    _PDFPLUMBER_VERSION = pdfplumber.__version__
+except ImportError:  # pragma: no cover - pdfplumber is in deps now
+    pdfplumber = None  # type: ignore[assignment]
+    _PDFPLUMBER_VERSION = "missing"
+
 from .extract_strategy import (
     ExtractInput,
     PrimaryStrategy,
@@ -69,7 +76,7 @@ from .sites import current_profile
 #         to client-side ``_next/data`` fetches (e.g. newer
 #         platform.claude.com).
 EXTRACTOR_VERSION_HTML = f"trafilatura-{trafilatura.__version__}-cfg5-rsc"
-EXTRACTOR_VERSION_PDF  = f"pypdf-{_PYPDF_VERSION}-cfg1"
+EXTRACTOR_VERSION_PDF  = f"pypdf-{_PYPDF_VERSION}+plumber-{_PDFPLUMBER_VERSION}-tbl1"
 # Pass-through for endpoints that already serve Markdown (no extraction needed).
 EXTRACTOR_VERSION_MD   = "passthrough-md-v1"
 
@@ -180,14 +187,61 @@ def is_pdf(body: bytes) -> bool:
     return body[:1024].lstrip(b"\x00 \t\r\n\f\v").startswith(_PDF_MAGIC)
 
 
-def extract_pdf(body: bytes, url: str) -> tuple[Optional[str], Optional[str]]:
-    """PDF -> markdown text. Returns (markdown, title) or (None, None).
+_PDF_TABLE_PAGE_LIMIT = 150  # bound pdfplumber's table pass on pathological PDFs
 
-    Deterministic given identical input bytes. We render each page's text,
-    join with a page-break marker, and use the PDF metadata title (or the URL
-    basename) as the frontmatter title. Quality varies by source PDF — scanned
-    images yield empty output; text-encoded PDFs (ATO's standard) come through
-    cleanly.
+
+def _render_pdf_table(rows) -> str:
+    """A pdfplumber table (rows of cells) -> GitHub-flavored markdown, or '' if it
+    has fewer than two non-empty rows (not a useful table)."""
+    norm = [
+        [("" if c is None else str(c)).replace("\n", " ").replace("|", "\\|").strip()
+         for c in (row or [])]
+        for row in (rows or [])
+    ]
+    norm = [r for r in norm if any(c for c in r)]
+    if len(norm) < 2:
+        return ""
+    width = max(len(r) for r in norm)
+    norm = [r + [""] * (width - len(r)) for r in norm]
+    lines = ["| " + " | ".join(norm[0]) + " |",
+             "| " + " | ".join(["---"] * width) + " |"]
+    lines += ["| " + " | ".join(r) + " |" for r in norm[1:]]
+    return "\n".join(lines)
+
+
+def _pdf_tables_by_page(body: bytes) -> dict[int, list[str]]:
+    """Per-page structured tables (markdown) via pdfplumber — deterministic. The
+    digital-PDF table lane: pypdf flattens tables into prose, pdfplumber recovers
+    the grid. Returns {} if pdfplumber is unavailable or the PDF can't be opened,
+    so the caller degrades cleanly to pypdf text only (never worse than before)."""
+    if pdfplumber is None:
+        return {}
+    import io
+    out: dict[int, list[str]] = {}
+    try:
+        with pdfplumber.open(io.BytesIO(body)) as pdf:
+            for i, page in enumerate(pdf.pages[:_PDF_TABLE_PAGE_LIMIT], start=1):
+                try:
+                    raw = page.extract_tables()
+                except Exception:
+                    continue
+                mds = [m for m in (_render_pdf_table(t) for t in raw) if m]
+                if mds:
+                    out[i] = mds
+    except Exception:
+        return {}
+    return out
+
+
+def extract_pdf(body: bytes, url: str) -> tuple[Optional[str], Optional[str]]:
+    """PDF -> markdown. Returns (markdown, title) or (None, None).
+
+    Deterministic given identical input bytes. Per page we emit pypdf's text
+    (reliable across forms whose text lives in annotations) and append any
+    structured tables pdfplumber recovers as GitHub-flavored markdown — the
+    table data pypdf would otherwise flatten into unreadable prose. The title is
+    the PDF metadata title (or the URL basename). Scanned-image PDFs yield empty
+    output (handled as extract-failed); text-encoded PDFs come through cleanly.
     """
     if pypdf is None:
         return None, None
@@ -208,6 +262,7 @@ def extract_pdf(body: bytes, url: str) -> tuple[Optional[str], Optional[str]]:
         from urllib.parse import urlparse as _u
         title = _u(url).path.rsplit("/", 1)[-1] or "PDF document"
 
+    tables_by_page = _pdf_tables_by_page(body)
     pages_md: list[str] = []
     try:
         for i, page in enumerate(reader.pages, start=1):
@@ -216,9 +271,13 @@ def extract_pdf(body: bytes, url: str) -> tuple[Optional[str], Optional[str]]:
             except Exception:
                 text = ""
             text = text.strip()
-            if not text:
+            tbls = tables_by_page.get(i, [])
+            if not text and not tbls:
                 continue
-            pages_md.append(f"## Page {i}\n\n{text}")
+            parts = [text] if text else []
+            if tbls:
+                parts.append("\n\n".join(tbls))
+            pages_md.append(f"## Page {i}\n\n" + "\n\n".join(parts))
     except Exception:
         # Encrypted / corrupt / unsupported PDF — leave as None so the
         # extract phase records 'extract-failed' with a clean reason.

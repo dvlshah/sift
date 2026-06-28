@@ -76,6 +76,15 @@ All notable changes are documented here. The format follows
   200 (JS-challenge shell) escalate immediately, without re-hammering the host;
   set `impersonate_fallbacks = []` to disable. Across a 27-site A/B, free rescues
   rose from 8 to 9 with no regressions.
+- **Digital-PDF table extraction** — the PDF lane now recovers structured tables.
+  `pypdf` flattens a PDF's tables into unreadable prose; sift appends each page's
+  tables as GitHub-flavored markdown via **`pdfplumber`** (deterministic — it
+  survives the byte-identical re-extract gate). pypdf's text is kept verbatim, so
+  the change is strictly additive — a form whose text lives in annotations is
+  never regressed. Verified on 26 real IRS/gov PDFs: 26/26 byte-deterministic,
+  25/26 recovered ≥1 table (the i1040 instructions: 246; the i1040 tax tables:
+  172). `EXTRACTOR_VERSION_PDF` is bumped, so existing PDFs re-extract from cached
+  raw on the next run.
 
 ### Changed
 - **Coverage reports the indexed-content fraction, not lifecycle-closed.** The

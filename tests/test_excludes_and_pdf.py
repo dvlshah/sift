@@ -74,7 +74,7 @@ def _make_test_pdf(text: str) -> bytes:
     writer = pypdf.PdfWriter()
     # pypdf 6.x supports add_blank_page; text injection needs reportlab.
     # For test purposes, use a minimal real PDF that pypdf can roundtrip.
-    page = writer.add_blank_page(width=200, height=200)
+    writer.add_blank_page(width=200, height=200)
     buf = io.BytesIO()
     writer.write(buf)
     return buf.getvalue()
@@ -121,6 +121,32 @@ class TestPdfExtract:
         # extract_pdf on HTML bytes should not blow up; returns (None, None).
         md, _ = extract_pdf(b"<html>hi</html>", "https://example.com/x.pdf")
         assert md is None
+
+
+class TestPdfTables:
+    """The pdfplumber digital-PDF table lane: pypdf text + recovered tables."""
+
+    def _table_pdf(self) -> bytes:
+        return (Path(__file__).parent / "fixtures" / "table_sample.pdf").read_bytes()
+
+    def test_table_recovered_as_markdown(self):
+        md, title = extract_pdf(self._table_pdf(), "https://example.com/schedule.pdf")
+        assert md is not None
+        assert "Sample Tax Schedule" in md         # pypdf text is preserved
+        assert "| Tax Year | Rate |" in md         # pdfplumber markdown header
+        assert "| --- | --- |" in md               # ...with a separator row
+        assert "| 2024 | 10 percent |" in md       # ...and the data rows
+        assert "| 2025 | 12 percent |" in md
+
+    def test_pdf_extraction_is_deterministic(self):
+        body = self._table_pdf()
+        a, _ = extract_pdf(body, "https://x/s.pdf")
+        b, _ = extract_pdf(body, "https://x/s.pdf")
+        assert a is not None and a == b            # G-det: byte-identical re-extract
+
+    def test_version_records_both_libs(self):
+        assert "pypdf" in EXTRACTOR_VERSION_PDF
+        assert "plumber" in EXTRACTOR_VERSION_PDF
 
 
 class TestExtractorVersions:
