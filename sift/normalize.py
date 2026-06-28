@@ -23,6 +23,7 @@ extract phase will recompute them from cached raw HTML without refetching.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 
@@ -51,12 +52,15 @@ def normalizer_version() -> str:
     pats = current_profile().dynamic_patterns
     if not pats:
         return NORMALIZER_VERSION
-    h = hashlib.sha256()
-    for pat in pats:
-        h.update(pat.pattern.encode("utf-8"))
-        h.update(str(pat.flags).encode("utf-8"))  # flags change matching too
-        h.update(b"\x00")
-    return f"{NORMALIZER_VERSION}+{h.hexdigest()[:12]}"
+    # JSON-encode [pattern, int(flags)] per pattern: unambiguous (injective —
+    # no separator a regex source could forge, unlike a NUL join) and stable
+    # across Python minors (int(flags) doesn't change, unlike str(flags)/repr).
+    payload = json.dumps(
+        [[p.pattern, int(p.flags)] for p in pats],
+        ensure_ascii=True, separators=(",", ":"),
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+    return f"{NORMALIZER_VERSION}+{digest}"
 
 
 def normalize_for_hash(text: str) -> str:

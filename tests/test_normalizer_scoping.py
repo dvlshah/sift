@@ -94,6 +94,29 @@ def test_regex_flags_change_the_version():
     assert normalizer_version() != v1
 
 
+class _PatternsAB(SiteProfile):
+    @property
+    def dynamic_patterns(self):
+        return (re.compile("a"), re.compile("b"))
+
+
+class _PatternForged(SiteProfile):
+    @property
+    def dynamic_patterns(self):
+        # A single pattern crafted to collide with _PatternsAB under a naive
+        # `pattern + str(flags) + NUL` join (32 == re.UNICODE default flags).
+        return (re.compile("a32\x00b"),)
+
+
+def test_fingerprint_is_injective():
+    # Regression: the encoding must not let a different pattern set forge the
+    # same fingerprint (a NUL is a legal regex byte; flags must be delimited).
+    set_profile(_PatternsAB())
+    v_ab = normalizer_version()
+    set_profile(_PatternForged())
+    assert normalizer_version() != v_ab
+
+
 def test_real_ato_profile_is_fingerprinted():
     # The reference profile contributes real dynamic_patterns -> non-bare version.
     set_profile(load_profile("sift.sites.ato:ATOProfile"))

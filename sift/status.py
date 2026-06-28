@@ -9,6 +9,7 @@ See ``docs/design/browser-fetch.md`` §12.4 step 9.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Optional
 
@@ -108,6 +109,18 @@ def compute_status_summary(root: Path) -> dict[str, Any]:
     current = paths.current_symlink(root)
     cur_target = str(current.resolve()) if current.exists() else None
 
+    # normalizer_version is now profile-fingerprinted, but `status` doesn't load
+    # the site profile — so report the value that produced the PUBLISHED corpus
+    # (read from its snapshot.json, same source the MCP surface uses). Fall back
+    # to the live value when nothing is published yet.
+    published_normalizer = normalizer_version()
+    if current.exists():
+        try:
+            snap = json.loads((current.resolve() / "snapshot.json").read_text())
+            published_normalizer = snap["versions"]["normalizer"]
+        except (OSError, ValueError, KeyError):
+            pass
+
     cached_ratio: Optional[float] = (
         (browser_cached / browser_total) if browser_total > 0 else None
     )
@@ -133,7 +146,7 @@ def compute_status_summary(root: Path) -> dict[str, Any]:
         "versions": {
             "crawler": CRAWLER_VERSION,
             "extractor": EXTRACTOR_VERSION,
-            "normalizer": normalizer_version(),
+            "normalizer": published_normalizer,
             "classifier": CLASSIFIER_VERSION,
             "browser": BROWSER_VERSION,
             "browser_runtime_chromium": _resolve_runtime_chromium(),
