@@ -49,6 +49,7 @@ from ._io import atomic_write_text, sha256_hex
 from .fetch import FetchResult, read_raw_blob
 from .manifest import get_row
 from .normalize import normalize_for_hash, normalizer_version
+from .quality import admit_content
 from .sites import current_profile
 
 # Per-extractor versions. Each markdown row records the version of whatever
@@ -519,6 +520,18 @@ def _extract_one(
     if not res.ok:
         return ExtractResult.no_content(
             url, raw_hash=fetch.raw_hash, reason=f"extract-failed-{extract_kind}",
+            extractor_version=current_extractor_version,
+        )
+
+    # Content-admission (trust boundary): refuse to commit a non-empty extraction
+    # that is actually a bot-challenge interstitial. looks_thin only *escalates*
+    # at fetch time; if escalation is off or every transport tier is blocked, the
+    # challenge body reaches here and would otherwise be hashed + signed as real
+    # content. Conservative (hard vendor marker + short body) -> real pages pass.
+    admit_ok, admit_reason = admit_content(raw, res.annotated_md, fetch.content_type)
+    if not admit_ok:
+        return ExtractResult.no_content(
+            url, raw_hash=fetch.raw_hash, reason=admit_reason,
             extractor_version=current_extractor_version,
         )
     title = res.title

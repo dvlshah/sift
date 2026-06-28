@@ -93,3 +93,51 @@ def looks_thin(body: bytes, content_type: str | None, threshold: int) -> bool:
         return False
 
     return visible_text_len(text) < threshold
+
+
+# Hard vendor bot-challenge fingerprints: JS/cookie/script identifiers emitted by
+# bot-managers that never appear in legitimate page *content*. Unlike the generic
+# phrases in _CHALLENGE_MARKERS (e.g. "access denied", which a real page can
+# legitimately contain), these are safe to REJECT outright at the admission gate.
+_HARD_CHALLENGE_MARKERS = (
+    "cf-browser-verification",  # Cloudflare IUAM
+    "/cdn-cgi/challenge-platform",  # Cloudflare challenge
+    "_incapsula_resource",  # Imperva/Incapsula
+    "request unsuccessful. incapsula",
+    "px-captcha",  # PerimeterX / HUMAN
+    "datadome",  # DataDome
+)
+
+# A genuine interstitial extracts to almost nothing; a real article that happens
+# to discuss a bot-manager is far longer. Requiring the extracted body to also be
+# short guards the rare case of a security write-up that quotes a vendor token.
+_ADMIT_CHALLENGE_MAX_CHARS = 512
+
+
+def admit_content(
+    raw: bytes, extracted_text: str | None, content_type: str | None
+) -> tuple[bool, str]:
+    """Trust-boundary gate at the extract step. Returns ``(admit, reason)``.
+
+    Rejects a *non-empty* extraction that is actually a bot-challenge
+    interstitial — a hard vendor fingerprint in the raw HTML together with a
+    short extracted body. ``looks_thin`` only *escalates* the fetch on these;
+    when escalation is disabled or every transport tier is blocked, the challenge
+    body still reaches extract and would otherwise be hashed and signed as real
+    content (the §6.2 trust-boundary hole).
+
+    Conservative by construction: only HTML is judged, only hard vendor markers
+    count, and the body must also be short — so legitimate pages (including ones
+    that name a bot-manager) are never rejected. Empty extractions are already
+    handled upstream (``reextract_and_hash`` returns ``ok=False``).
+    """
+    visible = len(extracted_text.strip()) if extracted_text else 0
+    if visible >= _ADMIT_CHALLENGE_MAX_CHARS:
+        return True, ""  # substantial content -> not an interstitial
+    ct = (content_type or "").lower()
+    if ct and "html" not in ct:
+        return True, ""  # PDFs / JSON / images are never challenge pages
+    low = raw.decode("utf-8", "ignore").lower()
+    if any(m in low for m in _HARD_CHALLENGE_MARKERS):
+        return False, "admission-challenge-page"
+    return True, ""
