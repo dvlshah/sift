@@ -113,6 +113,44 @@ class SiteProfile:
         """
         return None
 
+    def api_url(self, url: str) -> Optional[str]:
+        """The API endpoint to fetch *instead of* this URL, or ``None``.
+
+        The API-as-source acquisition transport. Many high-stakes sites render
+        their content client-side (a JS shell over an XHR call) — the canonical
+        page fetches to an empty shell, but the same resource is served as clean
+        JSON by an official API (eCFR, FederalRegister, NVD, CVE.org, …). A
+        profile maps the canonical URL to its API form here; the fetch phase
+        GETs the API, stores the JSON, and the json-api extract strategy turns it
+        into content. The manifest + citation URL stay the **canonical** page
+        (this mirrors the browser transport, which also cites the page it
+        rendered, not the transport) — so retrieval cites the human-facing URL.
+        Takes precedence over ``requires_browser``: a URL with an ``api_url`` is
+        always fetched via the API (native HTTP), never diverted to the browser
+        path (which would render the shell and bypass this transport's guards).
+        The robots gate runs at **seed**, so after adding an ``api_url`` route to
+        an already-seeded index, re-seed it: rows admitted before the route
+        existed were gated only on the page's host, not the API host.
+
+        Contract — three invariants the caller relies on:
+
+        * **Pure + stable.** A deterministic function of ``url`` with no network
+          / clock / global state. Seed and fetch each derive it independently and
+          must agree (seed robots-checks the API URL; fetch re-derives and GETs
+          it).
+        * **Robots-gated downstream.** The seed pipeline robots-checks the
+          returned URL against the *fetched* host before admitting the row, so a
+          site that ``Disallow``\\s its API (e.g. clinicaltrials.gov ``/api/``)
+          is skipped — return the API URL regardless and let the gate decide.
+        * **Determinism-clean response.** The json-api extractor signs the whole
+          response, so the API must be byte-stable across fetches. APIs that wrap
+          content in a volatile envelope (a response ``timestamp``, request id,
+          pagination cursor — e.g. the NVD ``/rest/json`` envelope) churn the
+          content_hash every run and need a per-profile field-map before routing
+          here (see ``docs/design`` — the field-map lane). Default never routes.
+        """
+        return None
+
     # ---- Extraction routing (overridable) ----------------------------------
 
     def body_kind(self, url: str, *, content_type: Optional[str] = None) -> Optional[str]:
