@@ -127,12 +127,15 @@ class CurlCffiScrapePool:
                 last_reason = f"impersonate[{target}] transport-failure"
                 continue  # rotate to a different fingerprint
             status = getattr(resp, "status_code", 0)
-            if status in self.cfg.escalate_statuses:
-                last_reason = f"impersonate[{target}] http-{status}"
-                continue  # block status — a different TLS profile may clear it
+            if status == 403:
+                # A fingerprint/bot-manager block is the one status a different
+                # TLS profile may clear — the only status worth rotating.
+                last_reason = f"impersonate[{target}] http-403"
+                continue
             if status < 200 or status >= 300:
-                # A definite, non-block failure (404 / 451 / other 5xx): rotating
-                # the fingerprint won't change it, so stop and escalate.
+                # 429/503 are back-off signals (rotating would ignore Retry-After
+                # and rarely clears IP/account limits); 404/451/other are real
+                # failures. Escalate without re-hammering the host.
                 raise EscalateError(f"impersonate http-{status}")
 
             # 2xx. The remaining gates are fingerprint-independent — decide here,

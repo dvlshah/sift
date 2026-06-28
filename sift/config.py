@@ -262,14 +262,22 @@ def _parse_firecrawl_config(raw: dict[str, Any]) -> FirecrawlScrapeConfig:
     )
 
 
+def _as_target_tuple(value: Any) -> tuple[str, ...]:
+    """Coerce an impersonate-fallbacks value to a tuple of target strings. A bare
+    string is treated as a single target, not iterated into single characters."""
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(t) for t in value)
+
+
 def _parse_impersonate_config(raw: dict[str, Any]) -> ImpersonateConfig:
     """Parse ``[crawl.impersonate]`` subsection. Missing keys take defaults so
     operators can flip ``enabled = true`` and inherit everything else."""
     return ImpersonateConfig(
         enabled=bool(raw.get("enabled", False)),
         impersonate=str(raw.get("impersonate", "chrome")),
-        impersonate_fallbacks=tuple(
-            str(t) for t in raw.get("impersonate_fallbacks", ("chrome124", "safari17_0"))
+        impersonate_fallbacks=_as_target_tuple(
+            raw.get("impersonate_fallbacks", ("chrome124", "safari17_0"))
         ),
         escalate_statuses=tuple(int(s) for s in raw.get("escalate_statuses", (403, 429, 503))),
         thin_text_threshold=int(raw.get("thin_text_threshold", 500)),
