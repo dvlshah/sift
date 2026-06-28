@@ -366,7 +366,8 @@ def init(root: Path):
     default=False,
     help="Discover new in-scope URLs by extracting links from already-fetched "
     "HTML pages (the recursive frontier — for sites with no/incomplete sitemap). "
-    "Run between runs to crawl one hop deeper each pass.",
+    "Run between runs to crawl one hop deeper each pass; use --exclude to fence "
+    "off URL traps (faceted search, calendars).",
 )
 @click.option(
     "--discover-max-urls",

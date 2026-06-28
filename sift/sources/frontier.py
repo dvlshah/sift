@@ -30,8 +30,8 @@ def extract_links(html: bytes, base_url: str, allowed_hosts: frozenset[str]) -> 
     Hosts are filtered to ``allowed_hosts`` so the frontier stays in scope; the
     seed pipeline applies excludes/robots/canonicalization again downstream.
     """
-    head = html[:64].lstrip(b"\x00 \t\r\n\f\v").lower()
-    if not (head.startswith(b"<") or b"<html" in html[:2048].lower()):
+    head = html[:64].lstrip(b"\xef\xbb\xbf\x00 \t\r\n\f\v").lower()  # tolerate a BOM
+    if not (head.startswith(b"<") or b"<html" in html[:4096].lower()):
         return set()
     from selectolax.parser import HTMLParser
 
@@ -103,13 +103,20 @@ class LinkFrontierSource(SeedSource):
             except Exception:
                 newly.append(raw_hash)  # unreadable -> don't retry it forever
                 continue
+            truncated = False
             for link in sorted(extract_links(blob, url, self.allowed)):
                 if link not in seen:
                     seen.add(link)
                     emitted.append(link)
                     if len(emitted) >= self.max_urls:
+                        truncated = True
                         break
-            newly.append(raw_hash)
+            if not truncated:
+                # Only mark a blob drained when ALL its new links were emitted.
+                # If we hit max_urls mid-blob, leave it un-harvested so the next
+                # pass recovers the remainder — the emitted links are manifest
+                # rows by then, so they're filtered out and only the rest yield.
+                newly.append(raw_hash)
 
         if newly:
             with sp.open("a") as f:

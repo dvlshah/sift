@@ -69,3 +69,22 @@ class TestLinkFrontierSource:
     def test_empty_allowed_hosts_yields_nothing(self, tmp_path):
         root = _fetched_root(tmp_path, b'<a href="/a">A</a>')
         assert list(LinkFrontierSource(root, allowed_hosts=[], max_urls=10).discover()) == []
+
+    def test_truncated_blob_recovered_across_passes(self, tmp_path):
+        # P1 regression: a page with more new links than max_urls must NOT be
+        # marked drained — the remainder is recovered on later passes, no loss.
+        html = b"".join(f'<a href="/p{i}">{i}</a>'.encode() for i in range(12))
+        root = _fetched_root(tmp_path, html)
+        found = set()
+        for _ in range(6):  # iterate the seed -> frontier loop
+            got = {u for u, _ in LinkFrontierSource(root, allowed_hosts=["ex.test"], max_urls=5).discover()}
+            if not got:
+                break
+            conn = open_db(paths.manifest_path(root))  # seed pipeline -> manifest rows
+            with transaction(conn):
+                for u in got:
+                    upsert_seed(conn, u, "LIVING", None, "cv", None, now_utc())
+            conn.commit()
+            conn.close()
+            found |= got
+        assert len(found) == 12  # all recovered across passes, none silently dropped
