@@ -45,9 +45,9 @@ def _patch(pool, mapping):
     return tried
 
 
-def _fetch(pool, tmp_path):
+def _fetch(pool, tmp_path, allowed_hosts=None):
     inp = FetchInput(url="https://ex.test/x", decision="FETCH", etag=None, last_modified=None)
-    return asyncio.run(pool.fetch(inp, tmp_path, allowed_hosts=None))
+    return asyncio.run(pool.fetch(inp, tmp_path, allowed_hosts=allowed_hosts))
 
 
 def test_rotation_recovers_on_fallback(tmp_path):
@@ -97,3 +97,47 @@ def test_empty_fallbacks_disables_rotation(tmp_path):
     with pytest.raises(EscalateError):
         _fetch(pool, tmp_path)
     assert tried == ["chrome"]  # rotation disabled
+
+
+def test_transport_failure_rotates_and_recovers(tmp_path):
+    pool = _pool()
+    tried = _patch(pool, {"chrome": None, "chrome124": _Resp(200)})
+    fr = _fetch(pool, tmp_path)
+    assert fr.status == 200
+    assert tried == ["chrome", "chrome124"]  # transport failure -> rotate
+
+
+def test_429_does_not_rotate(tmp_path):
+    # 429 is a back-off signal, not a fingerprint block: escalate immediately
+    # (rotating would ignore Retry-After and re-hammer a rate-limited host).
+    pool = _pool()
+    tried = _patch(pool, {"chrome": _Resp(429)})
+    with pytest.raises(EscalateError, match="http-429"):
+        _fetch(pool, tmp_path)
+    assert tried == ["chrome"]
+
+
+def test_503_does_not_rotate(tmp_path):
+    pool = _pool()
+    tried = _patch(pool, {"chrome": _Resp(503)})
+    with pytest.raises(EscalateError, match="http-503"):
+        _fetch(pool, tmp_path)
+    assert tried == ["chrome"]
+
+
+def test_off_allowlist_redirect_stops_rotation(tmp_path):
+    # A 200 that redirected off the allow-list is an SSRF stop — a different
+    # fingerprint can't change the redirect target, so don't rotate.
+    pool = _pool()
+    tried = _patch(pool, {"chrome": _Resp(200, url="https://evil.test/")})
+    with pytest.raises(EscalateError, match="redirect-off-allowlist"):
+        _fetch(pool, tmp_path, allowed_hosts=frozenset({"ex.test"}))
+    assert tried == ["chrome"]
+
+
+def test_dedup_does_not_retry_primary(tmp_path):
+    pool = _pool(fallbacks=("chrome", "chrome124"))  # primary repeated in fallbacks
+    tried = _patch(pool, {"chrome": _Resp(403), "chrome124": _Resp(200)})
+    fr = _fetch(pool, tmp_path)
+    assert fr.status == 200
+    assert tried == ["chrome", "chrome124"]  # de-duped: chrome tried once
