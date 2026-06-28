@@ -99,6 +99,8 @@ JS-rendered SPA → `pip install 'sift-engine[browser]' && python -m playwright 
 then add `[browser]\nenabled = true` (it joins the ladder as a free render tier).
 Still blocked (JS-challenge edges) → `--firecrawl-fallback` (paid; needs FIRECRAWL_API_KEY).
 These compose into one escalation ladder: native → impersonate → browser → Firecrawl.
+sift respects `robots.txt` `Disallow` at seed by default; set `[crawl]` →
+`respect_robots = false` only for sources you have permission to index.
 
 4 — WIRE THE READ-ONLY MCP SERVER
 Use the ABSOLUTE path to ./sift-index. Add this to the project's .mcp.json (Claude Code / Cursor / Codex):
