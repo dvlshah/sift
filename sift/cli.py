@@ -434,6 +434,12 @@ def seed(
         except FirecrawlError as e:
             click.echo(f"warn: {src.name} discovery failed: {e}", err=True)
 
+    # Resolve robots.txt for the seed origins BEFORE opening the write
+    # transaction below, so the (blocking, network) robots.txt fetches don't
+    # hold the SQLite write lock open across the per-URL loop.
+    if robots_gate is not None:
+        robots_gate.prewarm(u for u, _ in seeds)
+
     allowed = {h.lower() for h in allowed_hosts}
     now = now_utc()
     inserted = reclassified = skipped_host = skipped_excluded = 0
