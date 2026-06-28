@@ -93,6 +93,8 @@ sift run    --root ./sift-index --config sift.toml --limit 25 --coverage-base pl
 sift verify --root ./sift-index --skip-signature
 ```
 Drop `--limit 25 --coverage-base planned` for a full crawl once extraction looks good.
+No `sitemap.xml` (or an incomplete one)? After a run, `sift seed --from-frontier`
+extracts in-scope links from the fetched pages and crawls one hop deeper each pass.
 Hardened / bot-blocked host (Cloudflare/Akamai/Imperva) → add `--impersonate-fallback`
 (free, TLS-fingerprint impersonation; `pip install 'sift-engine[impersonate]'`).
 JS-rendered SPA → `pip install 'sift-engine[browser]' && python -m playwright install chromium`,
