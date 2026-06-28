@@ -33,6 +33,7 @@ class TestDefaultsWhenNoFile:
         assert cfg.crawl.rate_per_sec == 3.0
         assert cfg.crawl.concurrency == 8
         assert cfg.crawl.host_block_floor == 3
+        assert cfg.crawl.respect_robots is True
         assert cfg.publish.coverage_floor == 0.99
         assert cfg.seed.use_default_excludes is True
         assert cfg.tiers["LIVING"].floor_days == 7
@@ -56,6 +57,7 @@ timeout_sec = 60
 retries = 5
 user_agent = "test-agent/1.0"
 host_block_floor = 7
+respect_robots = false
 
 [publish]
 coverage_floor = 0.95
@@ -80,6 +82,7 @@ max_failures = 5
         assert cfg.crawl.rate_per_sec == 5.0
         assert cfg.crawl.user_agent == "test-agent/1.0"
         assert cfg.crawl.host_block_floor == 7
+        assert cfg.crawl.respect_robots is False
         assert cfg.publish.coverage_floor == 0.95
         assert cfg.seed.host_allow == ("www.example.com", "x.com")
         assert cfg.seed.use_default_excludes is False

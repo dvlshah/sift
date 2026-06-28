@@ -92,6 +92,10 @@ class CrawlConfig:
     timeout_sec: float = 30.0
     retries: int = 3
     user_agent: Optional[str] = None  # None -> built-in identifier in fetch.py
+    # Respect robots.txt Disallow rules: a Disallowed URL is dropped at seed time
+    # (never fetched). Set False only for sources you have permission to index. A
+    # missing/unreachable robots.txt allows everything (standard semantics).
+    respect_robots: bool = True
     # Content-quality escalation trigger: a 2xx whose visible text is below this
     # routes UP the transport ladder instead of being committed. 0 disables it
     # (back-compat for callers that don't opt in).
@@ -324,6 +328,7 @@ def load_config(path: Optional[Path] = None) -> IndexConfig:
             timeout_sec=float(crawl_raw.get("timeout_sec", 30.0)),
             retries=int(crawl_raw.get("retries", 3)),
             user_agent=crawl_raw.get("user_agent"),
+            respect_robots=bool(crawl_raw.get("respect_robots", True)),
             thin_text_threshold=int(crawl_raw.get("thin_text_threshold", 500)),
             host_block_floor=int(crawl_raw.get("host_block_floor", 3)),
             firecrawl=_parse_firecrawl_config(crawl_raw.get("firecrawl", {})),
