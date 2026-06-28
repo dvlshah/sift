@@ -311,6 +311,7 @@ async def _escalate_browser_tier(
     profile: "SiteProfile",
     pool: "BrowserPool",
     thin_text_threshold: int,
+    allowed_hosts: Optional[frozenset[str]] = None,
 ) -> "FetchResult":
     """The self-hosted browser as an escalation rung (not just profile-routing).
 
@@ -322,7 +323,7 @@ async def _escalate_browser_tier(
     from .sources.impersonate import EscalateError
 
     try:
-        res = await _fetch_browser(inp, root, profile, pool)
+        res = await _fetch_browser(inp, root, profile, pool, allowed_hosts=allowed_hosts)
     except Exception as e:
         # A browser problem (missing Playwright, launch crash, OOM) must never
         # take down a fetch — decline so the ladder continues and any native
@@ -377,7 +378,8 @@ async def _escalate(
     if browser_pool is not None and profile is not None:
         try:
             return await _escalate_browser_tier(
-                inp, root, profile, browser_pool, thin_text_threshold
+                inp, root, profile, browser_pool, thin_text_threshold,
+                allowed_hosts=allowed_hosts,
             )
         except EscalateError:
             pass  # render failed/thin → fall through to the paid tier
@@ -587,6 +589,7 @@ async def _fetch_browser(
     root: Path,
     profile: "SiteProfile",
     pool: "BrowserPool",
+    allowed_hosts: Optional[frozenset[str]] = None,
 ) -> FetchResult:
     """Render `inp.url` via the browser stack and project to FetchResult.
 
@@ -620,6 +623,27 @@ async def _fetch_browser(
             now,
             browser_version=BROWSER_VERSION,
         )
+
+    # SSRF guard (mirrors the native path in fetch_one): the browser follows
+    # redirects and in-page navigations, so re-validate the FINAL rendered URL's
+    # host against the allow-list before storing. An allow-listed origin with an
+    # open redirect / JS navigation could otherwise land us on an internal or
+    # cloud-metadata endpoint whose DOM we'd store under inp.url.
+    if allowed_hosts is not None:
+        # Fail CLOSED on an empty/opaque final_url (about:blank / data: from a
+        # failed navigation). Unlike the native path — whose completed response
+        # always carries a host — the browser can legitimately report a hostless
+        # final_url, and a no-navigation render already falls back to the on-list
+        # inp.url (browser.py), so refusing the opaque case loses no real content.
+        final_host = (urlparse(page.final_url).hostname or "").lower()
+        if final_host not in allowed_hosts:
+            return _no_body_result(
+                inp,
+                page.status_code,
+                f"redirect-off-allowlist:{final_host}",
+                now,
+                browser_version=BROWSER_VERSION,
+            )
 
     body = page.html.encode("utf-8")
     raw_hash, n_bytes = store_body(root, body)
@@ -772,7 +796,11 @@ async def fetch_all(
                 assert profile is not None and browser_pool is not None
                 tasks.append(
                     _guarded_fetch(
-                        inp, _fetch_browser(inp, root, profile, browser_pool)
+                        inp,
+                        _fetch_browser(
+                            inp, root, profile, browser_pool,
+                            allowed_hosts=allowed_hosts,
+                        ),
                     )
                 )
             for coro in asyncio.as_completed(tasks):

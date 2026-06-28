@@ -135,6 +135,87 @@ class TestFetchBrowserProjection:
         assert result.browser_version == BROWSER_VERSION
 
 
+class TestFetchBrowserSsrfGuard:
+    """The browser path re-validates the FINAL rendered host against the
+    allow-list before storing — mirroring the native fetch path — so an open
+    redirect / JS navigation can't land an off-allowlist (e.g. cloud-metadata)
+    DOM under the requested URL."""
+
+    @pytest.mark.asyncio
+    async def test_offlist_final_host_is_not_stored(self, tmp_path):
+        inp = FetchInput(url="https://x/spa/page", decision="FETCH",
+                         etag=None, last_modified=None)
+        # render() navigates/redirects to the cloud-metadata host, off-allowlist
+        page = _rendered("https://169.254.169.254/latest/meta-data/",
+                         html="<html>SECRET CREDS</html>")
+        with patch("sift.browser.render", return_value=page):
+            result = await _fetch_browser(
+                inp, tmp_path, _SpaProfile(), _FakePool(),
+                allowed_hosts=frozenset({"x"}),
+            )
+        assert result.raw_hash is None  # body NOT stored
+        assert result.error is not None
+        assert "redirect-off-allowlist" in result.error
+        assert "169.254.169.254" in result.error
+
+    @pytest.mark.asyncio
+    async def test_onlist_final_host_is_stored(self, tmp_path):
+        inp = FetchInput(url="https://x/spa/page", decision="FETCH",
+                         etag=None, last_modified=None)
+        page = _rendered("https://x/spa/final", html="<html>OK</html>")
+        with patch("sift.browser.render", return_value=page):
+            result = await _fetch_browser(
+                inp, tmp_path, _SpaProfile(), _FakePool(),
+                allowed_hosts=frozenset({"x"}),
+            )
+        assert result.error is None
+        assert result.raw_hash is not None
+
+    @pytest.mark.asyncio
+    async def test_no_allowlist_skips_check_backcompat(self, tmp_path):
+        # allowed_hosts=None (default) preserves the prior behavior: no check.
+        inp = FetchInput(url="https://x/spa/page", decision="FETCH",
+                         etag=None, last_modified=None)
+        page = _rendered("https://anywhere.example/x", html="<html>OK</html>")
+        with patch("sift.browser.render", return_value=page):
+            result = await _fetch_browser(inp, tmp_path, _SpaProfile(), _FakePool())
+        assert result.error is None
+        assert result.raw_hash is not None
+
+    @pytest.mark.asyncio
+    async def test_opaque_final_url_fails_closed(self, tmp_path):
+        # A failed navigation reports an opaque final_url (about:blank) with no
+        # host. With an allow-list set, that must NOT be stored (fail closed).
+        inp = FetchInput(url="https://x/spa/page", decision="FETCH",
+                         etag=None, last_modified=None)
+        page = _rendered("about:blank", html="<html></html>")
+        with patch("sift.browser.render", return_value=page):
+            result = await _fetch_browser(
+                inp, tmp_path, _SpaProfile(), _FakePool(),
+                allowed_hosts=frozenset({"x"}),
+            )
+        assert result.raw_hash is None
+        assert result.error is not None and "redirect-off-allowlist" in result.error
+
+    @pytest.mark.asyncio
+    async def test_escalation_path_enforces_allowlist(self, tmp_path):
+        # The escalation rung threads allowed_hosts into _fetch_browser too: an
+        # off-list final host yields a no-body result, so _escalate_browser_tier
+        # raises EscalateError (the ladder falls through) instead of using it.
+        from sift.fetch import _escalate_browser_tier
+        from sift.sources.impersonate import EscalateError
+        inp = FetchInput(url="https://x/spa/page", decision="FETCH",
+                         etag=None, last_modified=None)
+        page = _rendered("https://169.254.169.254/latest/meta-data/",
+                         html="<html>SECRET</html>")
+        with patch("sift.browser.render", return_value=page):
+            with pytest.raises(EscalateError):
+                await _escalate_browser_tier(
+                    inp, tmp_path, _SpaProfile(), _FakePool(),
+                    0, allowed_hosts=frozenset({"x"}),
+                )
+
+
 # ---------------------------------------------------------------------------
 # fetch_all dispatch: profile.requires_browser routes per URL.
 # ---------------------------------------------------------------------------
