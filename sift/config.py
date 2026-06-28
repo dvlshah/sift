@@ -328,6 +328,7 @@ def load_config(path: Optional[Path] = None) -> IndexConfig:
             timeout_sec=float(crawl_raw.get("timeout_sec", 30.0)),
             retries=int(crawl_raw.get("retries", 3)),
             user_agent=crawl_raw.get("user_agent"),
+            respect_robots=bool(crawl_raw.get("respect_robots", True)),
             thin_text_threshold=int(crawl_raw.get("thin_text_threshold", 500)),
             host_block_floor=int(crawl_raw.get("host_block_floor", 3)),
             firecrawl=_parse_firecrawl_config(crawl_raw.get("firecrawl", {})),
