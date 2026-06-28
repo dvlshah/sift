@@ -15,6 +15,7 @@ also short-circuit (raw didn't change, so the markdown can't have either).
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
 from collections import Counter
@@ -85,6 +86,8 @@ EXTRACTOR_VERSION_MD   = "passthrough-md-v1"
 EXTRACTOR_VERSION = EXTRACTOR_VERSION_HTML
 
 # PDF magic bytes (first 4-5 bytes of any PDF file)
+_log = logging.getLogger(__name__)
+
 _PDF_MAGIC = b"%PDF-"
 
 # Heading anchor injection: turn "## Foo bar" into "## Foo bar {#foo-bar}"
@@ -220,6 +223,12 @@ def _pdf_tables_by_page(body: bytes) -> dict[int, list[str]]:
     out: dict[int, list[str]] = {}
     try:
         with pdfplumber.open(io.BytesIO(body)) as pdf:
+            if len(pdf.pages) > _PDF_TABLE_PAGE_LIMIT:
+                _log.warning(
+                    "pdf table extraction capped at %d of %d pages (page text "
+                    "is unaffected; tables beyond the cap are not structured)",
+                    _PDF_TABLE_PAGE_LIMIT, len(pdf.pages),
+                )
             for i, page in enumerate(pdf.pages[:_PDF_TABLE_PAGE_LIMIT], start=1):
                 try:
                     raw = page.extract_tables()
