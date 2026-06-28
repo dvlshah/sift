@@ -7,6 +7,21 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **API-as-source acquisition transport (`SiteProfile.api_url`)** — index sites
+  that render content client-side (a JS shell over an XHR call) by fetching the
+  official API the page itself calls. A profile maps a canonical URL to its API
+  form (`api_url(url)`); the fetch phase GETs the API JSON while the manifest and
+  **citation stay the canonical human page** (mirrors the browser transport), and
+  the existing json-api strategy extracts it. The seed pipeline **robots-checks
+  the API URL** — the URL actually fetched — so a site that `Disallow`s its API
+  (e.g. `clinicaltrials.gov` `/api/`) is skipped, honoring robots on what we
+  retrieve (enforced at seed — re-seed an existing index after adding an
+  `api_url` route so the API host's robots.txt is consulted). Ships a
+  `CVEProfile` reference (`www.cve.org/CVERecord?id=…` →
+  `cveawg.mitre.org/api/cve/…`: cross-origin, robots-allowed, byte-deterministic).
+  json-api titles now do a depth-first search for the first string title field, so
+  nested-title APIs (CVE's `containers.cna.title`) get a real title, not a URL
+  slug (`EXTRACTOR_VERSION_JSON` → `json-v2`).
 - **`changed_since` MCP tool** — the temporal diff feed. Given a cursor (a
   `run_id` from `snapshot_status`, or an ISO-8601 timestamp), returns the net
   added / modified / removed pages up to the current published snapshot, read

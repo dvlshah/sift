@@ -99,6 +99,10 @@ Hardened / bot-blocked host (Cloudflare/Akamai/Imperva) → add `--impersonate-f
 (free, TLS-fingerprint impersonation; `pip install 'sift-engine[impersonate]'`).
 JS-rendered SPA → `pip install 'sift-engine[browser]' && python -m playwright install chromium`,
 then add `[browser]\nenabled = true` (it joins the ladder as a free render tier).
+JS-rendered SPA that has an official API (eCFR, CVE.org, FederalRegister …) → a
+profile's `api_url(url)` fetches the robots-allowed API instead of the shell —
+cleaner and cheaper than a browser, and the citation stays the human page (see
+the bundled `sift.sites.cve:CVEProfile`).
 Still blocked (JS-challenge edges) → `--firecrawl-fallback` (paid; needs FIRECRAWL_API_KEY).
 These compose into one escalation ladder: native → impersonate → browser → Firecrawl.
 sift respects `robots.txt` `Disallow` at seed by default; set `[crawl]` →

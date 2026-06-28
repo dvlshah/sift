@@ -97,7 +97,7 @@ class TestJsonExtract:
         assert md is None
 
     def test_version_embeds_html_extractor(self):
-        assert "json-v1" in EXTRACTOR_VERSION_JSON
+        assert "json-v2" in EXTRACTOR_VERSION_JSON
         assert EXTRACTOR_VERSION_HTML in EXTRACTOR_VERSION_JSON
         assert EXTRACTOR_VERSION_JSON != EXTRACTOR_VERSION_HTML
 
@@ -125,3 +125,33 @@ class TestJsonExtract:
         assert _json_applies(_inp(raw=raw))         # BOM doesn't defeat routing
         md, title = extract_json(raw, "https://x/api")
         assert md is not None and title == "rates"  # ...or json.loads
+
+
+class TestJsonTitle:
+    """v2 titles: depth-first search for the first string title field, so APIs
+    that carry the title nested (CVE's containers.cna.title) get a real title
+    instead of the URL slug — without regressing top-level-title APIs."""
+
+    def _title(self, obj):
+        from sift.extract import _json_title
+        return _json_title(obj, "https://host/path/SLUG")
+
+    def test_top_level_title_wins(self):
+        assert self._title({"title": "Top", "child": {"title": "Nested"}}) == "Top"
+
+    def test_nested_title_found_when_no_top_level(self):
+        # CVE 5.1 shape: the human title lives at containers.cna.title.
+        obj = {"cveMetadata": {"cveId": "CVE-2021-44228"},
+               "containers": {"cna": {"providerMetadata": {"shortName": "apache"},
+                                      "title": "Apache Log4j2 JNDI flaw"}}}
+        assert self._title(obj) == "Apache Log4j2 JNDI flaw"
+
+    def test_title_in_list_found(self):
+        assert self._title({"items": [{"x": 1}, {"name": "Second"}]}) == "Second"
+
+    def test_url_slug_fallback_when_no_title_field(self):
+        assert self._title({"a": 1, "b": {"c": 2}}) == "SLUG"
+
+    def test_blank_title_field_skipped(self):
+        # An empty/whitespace title must not win over a real nested one.
+        assert self._title({"title": "  ", "sub": {"headline": "Real"}}) == "Real"

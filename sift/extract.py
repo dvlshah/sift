@@ -80,8 +80,9 @@ EXTRACTOR_VERSION_HTML = f"trafilatura-{trafilatura.__version__}-cfg5-rsc"
 EXTRACTOR_VERSION_PDF  = f"pypdf-{_PYPDF_VERSION}+plumber-{_PDFPLUMBER_VERSION}-tbl1"
 # API-as-content delegates its primary HTML field to the HTML extractor, so its
 # identity embeds EXTRACTOR_VERSION_HTML (a trafilatura/config change re-derives
-# JSON content too).
-EXTRACTOR_VERSION_JSON = f"json-v1+{EXTRACTOR_VERSION_HTML}"
+# JSON content too). v2: titles use a depth-first search (_first_title_field) so
+# nested-title APIs (CVE's containers.cna.title) get a real title, not a URL slug.
+EXTRACTOR_VERSION_JSON = f"json-v2+{EXTRACTOR_VERSION_HTML}"
 # Pass-through for endpoints that already serve Markdown (no extraction needed).
 EXTRACTOR_VERSION_MD   = "passthrough-md-v1"
 
@@ -343,12 +344,39 @@ def _collect_html_fields(obj, found: list[str]) -> None:
             _collect_html_fields(v, found)
 
 
-def _json_title(obj, url: str) -> str:
+_TITLE_KEYS = ("title", "name", "headline", "label")
+
+
+def _first_title_field(obj) -> Optional[str]:
+    """First non-empty string title-ish field in DFS order, or ``None``.
+
+    Checks every key in ``_TITLE_KEYS`` at each dict level *before* descending,
+    so a top-level ``title`` (GOV.UK, FederalRegister) wins, but a nested one
+    (CVE's ``containers.cna.title``) is still found when there is no top-level
+    title — without per-site knowledge. DFS order is stable because
+    ``json.loads`` preserves key insertion order, so the chosen title is
+    deterministic across re-extracts."""
     if isinstance(obj, dict):
-        for k in ("title", "name", "headline", "label"):
+        for k in _TITLE_KEYS:
             v = obj.get(k)
             if isinstance(v, str) and v.strip():
                 return v.strip()
+        for v in obj.values():
+            hit = _first_title_field(v)
+            if hit:
+                return hit
+    elif isinstance(obj, list):
+        for v in obj:
+            hit = _first_title_field(v)
+            if hit:
+                return hit
+    return None
+
+
+def _json_title(obj, url: str) -> str:
+    hit = _first_title_field(obj)
+    if hit:
+        return hit
     from urllib.parse import urlparse as _u
     return _u(url).path.rsplit("/", 1)[-1] or "API document"
 

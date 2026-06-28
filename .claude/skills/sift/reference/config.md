@@ -123,7 +123,7 @@ A profile isolates all site-specific logic from the core pipeline. It owns:
 - **`dynamic_patterns`** — regexes for volatile content (timestamps, nonces) stripped *before* hashing, so `content_hash` is stable across fetches.
 - **Section taxonomy** — top-level grouping for the agent-facing `INDEX.md`.
 - **Facts schemas + extractor registry** — what structured records to mine and how.
-- **Transport routing** — `requires_browser(url)` flips a URL to the browser path; `browser_config(url)` returns a per-URL `BrowserFetchConfig` override.
+- **Transport routing** — `requires_browser(url)` flips a URL to the browser path; `browser_config(url)` returns a per-URL `BrowserFetchConfig` override; `api_url(url)` routes a client-rendered page to the official API it calls (the fetch GETs the API JSON, the manifest + citation stay the canonical page). The seed pipeline robots-checks the returned API URL, so a site that `Disallow`s its API is skipped. See `sift.sites.cve:CVEProfile`.
 
 Minimal example:
 

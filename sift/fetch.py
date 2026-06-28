@@ -65,6 +65,19 @@ class FetchInput:
     decision: str  # FETCH or FETCH_CONDITIONAL
     etag: Optional[str]
     last_modified: Optional[str]
+    # The URL to actually GET, when it differs from the canonical ``url`` — the
+    # API-as-source acquisition transport (``profile.api_url(url)``). ``None``
+    # means "fetch ``url`` itself" (the default for every HTML/PDF row). When
+    # set, the request targets the API but the stored FetchResult keeps the
+    # canonical ``url``, so the manifest, citation, and content-addressing are
+    # unchanged — only the bytes come from the API. Mirrors how the browser
+    # transport renders one URL but records the page URL.
+    fetch_url: Optional[str] = None
+
+    @property
+    def target_url(self) -> str:
+        """The URL the transport actually requests (API form if set, else canonical)."""
+        return self.fetch_url or self.url
 
 
 @dataclass
@@ -217,7 +230,11 @@ async def _one_request(
             return HOST_FLOORED, None, None  # skip the doomed request entirely
         async with limiter:
             try:
-                resp = await client.get(inp.url, headers=headers, follow_redirects=True)
+                # target_url is the API form when the profile routed this row
+                # through the api_url transport, else the canonical url itself.
+                resp = await client.get(
+                    inp.target_url, headers=headers, follow_redirects=True
+                )
                 return resp.status_code, resp, None
             except httpx.HTTPError as e:
                 return 0, None, f"{type(e).__name__}: {e}"
@@ -427,7 +444,15 @@ async def fetch_one(
     pull an internal/metadata endpoint's response into the index under the
     original URL. ``None`` disables the check (back-compat; the CLI always
     passes the run's seed.host_allow)."""
-    host = host_of(inp.url)
+    host = host_of(inp.target_url)
+    # The api_url transport is a deliberate native fetch of a clean JSON endpoint.
+    # It must NOT escalate: the curl_cffi / browser / Firecrawl tiers all re-fetch
+    # inp.url — the canonical JS *shell* — which would silently index the shell
+    # instead of the API. Null the tiers for an api row so a block surfaces as a
+    # failure, not a wrong-content fallback. (A later lane can add API-aware
+    # escalation that targets the API URL itself.)
+    if inp.fetch_url is not None:
+        impersonate_pool = browser_pool = firecrawl_pool = None
     free_tier = impersonate_pool is not None or browser_pool is not None
     escalate_kwargs = dict(
         impersonate_pool=impersonate_pool,
@@ -533,7 +558,14 @@ async def fetch_one(
     # or cloud-metadata endpoint, whose body we'd store under inp.url.
     if allowed_hosts is not None:
         final_host = (resp.url.host or "").lower()
-        if final_host and final_host not in allowed_hosts:
+        # An api_url row is fetched from the profile-declared API host, which is
+        # legitimately off the seed allow-list (e.g. www.cve.org -> cveawg.mitre.org).
+        # Trust that one declared host, but still reject a redirect that lands
+        # anywhere else (an open redirect to an internal/metadata endpoint).
+        expected = allowed_hosts
+        if inp.fetch_url is not None:
+            expected = allowed_hosts | {host_of(inp.target_url)}
+        if final_host and final_host not in expected:
             return _no_body_result(
                 inp,
                 resp.status_code,
@@ -735,8 +767,18 @@ async def fetch_all(
         http_inputs = list(pending)
         browser_inputs: list[FetchInput] = []
     else:
-        browser_inputs = [inp for inp in pending if profile.requires_browser(inp.url)]
-        http_inputs = [inp for inp in pending if not profile.requires_browser(inp.url)]
+        # An api_url row (fetch_url set) ALWAYS uses the native API transport: it
+        # must never divert to the browser path, which renders inp.url (the JS
+        # shell) and would bypass the api transport's no-escalation + SSRF
+        # guarantees. So api_url takes precedence over requires_browser.
+        browser_inputs = [
+            inp for inp in pending
+            if inp.fetch_url is None and profile.requires_browser(inp.url)
+        ]
+        http_inputs = [
+            inp for inp in pending
+            if inp.fetch_url is not None or not profile.requires_browser(inp.url)
+        ]
 
     if browser_inputs and browser_pool is None:
         urls = ", ".join(inp.url for inp in browser_inputs[:3])
@@ -748,10 +790,13 @@ async def fetch_all(
         )
 
     # Group http inputs by host so each host gets its own rate limiter
-    # (and politeness budget).
+    # (and politeness budget). Key on target_url's host, not the canonical
+    # url's: an api_url-routed row is fetched from the API host (possibly a
+    # different origin, e.g. nvd.nist.gov -> services.nvd.nist.gov), and the
+    # rate limit + adaptive floor must apply to the host we actually hit.
     by_host: dict[str, list[FetchInput]] = {}
     for inp in http_inputs:
-        by_host.setdefault(host_of(inp.url), []).append(inp)
+        by_host.setdefault(host_of(inp.target_url), []).append(inp)
 
     limiters = {h: AsyncLimiter(max_rate=rate, time_period=1.0) for h in by_host}
     semaphore = asyncio.Semaphore(concurrency)

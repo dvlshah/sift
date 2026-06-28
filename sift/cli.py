@@ -460,8 +460,20 @@ def seed(
     # Resolve robots.txt for the seed origins BEFORE opening the write
     # transaction below, so the (blocking, network) robots.txt fetches don't
     # hold the SQLite write lock open across the per-URL loop.
+    seed_profile = sites_mod.current_profile()
     if robots_gate is not None:
-        robots_gate.prewarm(u for u, _ in seeds)
+        # Prewarm both the canonical hosts AND any api_url transport hosts (a
+        # profile may route a row to a different origin's API, e.g.
+        # nvd.nist.gov -> services.nvd.nist.gov), so the per-URL robots checks
+        # below hit a warm cache instead of a blocking network fetch.
+        prewarm_urls: list[str] = []
+        for u, _ in seeds:
+            cu = canonicalize_url(u)
+            prewarm_urls.append(cu)
+            api = seed_profile.api_url(cu)
+            if api:
+                prewarm_urls.append(api)
+        robots_gate.prewarm(prewarm_urls)
 
     allowed = {h.lower() for h in allowed_hosts}
     now = now_utc()
@@ -483,9 +495,19 @@ def seed(
             if is_excluded(url, excludes):
                 skipped_excluded += 1
                 continue
-            if robots_gate is not None and not robots_gate.allowed(url):
-                skipped_robots += 1
-                continue
+            if robots_gate is not None:
+                if not robots_gate.allowed(url):
+                    skipped_robots += 1
+                    continue
+                # Honor robots on the URL we will actually fetch: when the
+                # profile routes this row through an api_url transport, the API
+                # origin's robots.txt governs (e.g. clinicaltrials.gov
+                # Disallow: /api/), not just the canonical page's. Skip the row
+                # if the API form is disallowed.
+                api = seed_profile.api_url(url)
+                if api is not None and not robots_gate.allowed(api):
+                    skipped_robots += 1
+                    continue
             tier = classify_tier(url).value
             pg = parent_guide(url)
             outcome = upsert_seed(conn, url, tier, pg, CLASSIFIER_VERSION, lm, now)
@@ -686,16 +708,19 @@ def fetch(
             fetchable = [p for p in fetchable if p.tier in tier_set]
         if limit is not None:
             fetchable = fetchable[:limit]
+        profile = sites_mod.current_profile()
         inputs = [
             FetchInput(
                 url=p.url,
                 decision=p.decision,
                 etag=p.etag,
                 last_modified=p.last_modified,
+                # api_url transport: GET the API form (JSON) but keep the
+                # canonical url on the row, so the citation stays the human page.
+                fetch_url=profile.api_url(p.url),
             )
             for p in fetchable
         ]
-        profile = sites_mod.current_profile()
         # Browser = SPA-render path AND tier-3 escalation fallback. Builds a pool
         # when usable; degrades (no crash) if it's only a fallback and the dep is
         # missing. Chromium launches lazily on first render, so unused = free.
@@ -1259,12 +1284,16 @@ def run(
             fetchable = [p for p in fetchable if p.tier in tier_set]
         if limit is not None:
             fetchable = fetchable[:limit]
+        profile = sites_mod.current_profile()
         inputs = [
             FetchInput(
                 url=p.url,
                 decision=p.decision,
                 etag=p.etag,
                 last_modified=p.last_modified,
+                # api_url transport: GET the API form (JSON) but keep the
+                # canonical url on the row, so the citation stays the human page.
+                fetch_url=profile.api_url(p.url),
             )
             for p in fetchable
         ]
